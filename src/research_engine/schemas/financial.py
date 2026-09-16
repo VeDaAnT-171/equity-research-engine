@@ -78,6 +78,10 @@ class SourceLocation(StrictModel):
     table: Optional[str] = None
     xbrl_concept: Optional[str] = Field(default=None, pattern=XBRL_CONCEPT_PATTERN)
     xbrl_context: Optional[str] = None
+    # Filing that originally disclosed the value (a companyfacts snapshot aggregates many filings)
+    filing_accession: Optional[str] = Field(default=None, pattern=r"^\d{10}-\d{2}-\d{6}$")
+    filing_form: Optional[str] = None
+    filed_date: Optional[date] = None
     source_text: Optional[str] = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")

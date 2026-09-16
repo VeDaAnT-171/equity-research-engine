@@ -9,7 +9,7 @@ import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Iterator, Optional
+from typing import Iterator, Literal, Optional
 from urllib.parse import urlparse
 
 from pydantic import ValidationError
@@ -35,11 +35,13 @@ CREATE TABLE IF NOT EXISTS documents (
     status TEXT NOT NULL,
     parser_version TEXT,
     error TEXT,
+    supersedes TEXT,
     registered_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_documents_company ON documents(company_id);
 CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(file_hash);
+CREATE INDEX IF NOT EXISTS idx_documents_supersedes ON documents(supersedes);
 CREATE TABLE IF NOT EXISTS status_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     document_id TEXT NOT NULL,
@@ -53,7 +55,7 @@ CREATE TABLE IF NOT EXISTS status_history (
 _COLUMNS = [
     "document_id", "company_id", "document_type", "source_url", "local_source_path", "raw_path",
     "publication_date", "fiscal_period", "retrieval_timestamp", "file_hash", "content_type", "size_bytes",
-    "status", "parser_version", "error", "registered_at", "updated_at",
+    "status", "parser_version", "error", "supersedes", "registered_at", "updated_at",
 ]
 
 _EXT_BY_CONTENT_TYPE = {
@@ -87,7 +89,18 @@ class DocumentRegistry:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.raw_root.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
+            self._migrate(conn)
             conn.executescript(_SCHEMA)
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        """Bring registries created by earlier engine versions up to the current schema."""
+        exists = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'").fetchone()
+        if not exists:
+            return
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(documents)")}
+        if "supersedes" not in columns:
+            conn.execute("ALTER TABLE documents ADD COLUMN supersedes TEXT")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -123,8 +136,11 @@ class DocumentRegistry:
         company_id: Optional[str] = None,
         status: Optional[DocumentStatus] = None,
         document_type: Optional[DocumentType] = None,
+        include_superseded: bool = False,
     ) -> list[DocumentRecord]:
         clauses, params = [], []
+        if not include_superseded and status is not DocumentStatus.SUPERSEDED:
+            clauses.append("status != 'superseded'")
         for column, value in (("company_id", company_id), ("status", status), ("document_type", document_type)):
             if value is not None:
                 clauses.append(f"{column} = ?")
@@ -138,6 +154,20 @@ class DocumentRegistry:
         with self._connect() as conn:
             rows = conn.execute("SELECT * FROM documents WHERE file_hash = ? ORDER BY document_id", (file_hash,)).fetchall()
         return [self._row_to_record(r) for r in rows]
+
+    def current_version(self, document_id: str) -> DocumentRecord:
+        """Follow the supersession chain to the newest retrieval of the same source."""
+        record = self.get(document_id)
+        seen = {record.document_id}
+        while True:
+            with self._connect() as conn:
+                row = conn.execute("SELECT * FROM documents WHERE supersedes = ?", (record.document_id,)).fetchone()
+            if row is None:
+                return record
+            record = self._row_to_record(row)
+            if record.document_id in seen:
+                raise RegistryError(f"supersession cycle at {record.document_id}")
+            seen.add(record.document_id)
 
     def history(self, document_id: str) -> list[dict]:
         with self._connect() as conn:
@@ -200,46 +230,29 @@ class DocumentRegistry:
         suffix = PurePosixPath(location or "").suffix.lower()
         return suffix if suffix in _KNOWN_EXT else ".bin"
 
-    def store_raw(
-        self,
-        document_id: str,
-        content: bytes,
-        *,
-        content_type: Optional[str] = None,
-        retrieved_at: Optional[datetime] = None,
-    ) -> DocumentRecord:
-        record = self.get(document_id)
-        if not content:
-            raise RegistryError(f"{document_id}: refusing to store empty content")
-        digest = hashlib.sha256(content).hexdigest()
-        if record.file_hash is not None:
-            if record.file_hash == digest:
-                return record  # unchanged document: cache hit, nothing to do
-            raise RegistryError(
-                f"{document_id}: source content changed (stored {record.file_hash[:12]}, new {digest[:12]}). "
-                "Raw documents are never overwritten; register the new version as a separate document."
-            )
-        if record.status is not DocumentStatus.REGISTERED:
-            raise RegistryError(f"{document_id}: cannot store content in status '{record.status.value}'")
-
+    def _write_raw(self, record: DocumentRecord, content: bytes, digest: str, content_type: Optional[str]) -> Path:
         target = self.raw_root / record.company_id / digest[:2] / f"{digest}{self._extension(record, content_type)}"
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
             if hashlib.sha256(target.read_bytes()).hexdigest() != digest:
                 raise RegistryError(f"raw store corruption: {target} does not match its content hash")
-        else:
-            fd, tmp_name = tempfile.mkstemp(dir=target.parent, prefix=".incoming-")
-            try:
-                with os.fdopen(fd, "wb") as fh:
-                    fh.write(content)
-                    fh.flush()
-                    os.fsync(fh.fileno())
-                os.replace(tmp_name, target)
-            except BaseException:
-                Path(tmp_name).unlink(missing_ok=True)
-                raise
-            target.chmod(0o444)
+            return target
+        fd, tmp_name = tempfile.mkstemp(dir=target.parent, prefix=".incoming-")
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(content)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_name, target)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
+        target.chmod(0o444)
+        return target
 
+    def _mark_retrieved(self, record: DocumentRecord, content: bytes, digest: str,
+                        content_type: Optional[str], retrieved_at: Optional[datetime]) -> DocumentRecord:
+        target = self._write_raw(record, content, digest, content_type)
         updated = self._rebuild(
             record,
             status=DocumentStatus.RETRIEVED,
@@ -253,6 +266,59 @@ class DocumentRegistry:
         )
         self._save(updated, record.status, None)
         return updated
+
+    def store_raw(
+        self,
+        document_id: str,
+        content: bytes,
+        *,
+        content_type: Optional[str] = None,
+        retrieved_at: Optional[datetime] = None,
+        on_change: Literal["refuse", "new_version"] = "refuse",
+    ) -> DocumentRecord:
+        """Store retrieved bytes. Identical content is a no-op (cache hit). Changed content is either
+        refused or stored as a new document version that supersedes the old one. Raw bytes are never
+        overwritten in either case."""
+        record = self.current_version(document_id)
+        if not content:
+            raise RegistryError(f"{document_id}: refusing to store empty content")
+        digest = hashlib.sha256(content).hexdigest()
+        if record.file_hash is not None:
+            if record.file_hash == digest:
+                return record
+            if on_change == "refuse":
+                raise RegistryError(
+                    f"{record.document_id}: source content changed (stored {record.file_hash[:12]}, new {digest[:12]}). "
+                    "Raw documents are never overwritten; store it as a new version."
+                )
+            return self._store_new_version(record, content, digest, content_type, retrieved_at)
+        if record.status is not DocumentStatus.REGISTERED:
+            raise RegistryError(f"{record.document_id}: cannot store content in status '{record.status.value}'")
+        return self._mark_retrieved(record, content, digest, content_type, retrieved_at)
+
+    def _store_new_version(self, previous: DocumentRecord, content: bytes, digest: str,
+                           content_type: Optional[str], retrieved_at: Optional[datetime]) -> DocumentRecord:
+        if previous.status is DocumentStatus.FAILED:
+            raise RegistryError(f"{previous.document_id}: retry the failed document before storing a new version")
+        source_key = previous.source_url or previous.local_source_path
+        now = _utcnow()
+        new = DocumentRecord(
+            document_id=make_document_id(previous.company_id, previous.document_type, f"{source_key}@{digest}@{previous.document_id}"),
+            company_id=previous.company_id,
+            document_type=previous.document_type,
+            source_url=previous.source_url,
+            local_source_path=previous.local_source_path,
+            publication_date=previous.publication_date,
+            fiscal_period=previous.fiscal_period,
+            status=DocumentStatus.REGISTERED,
+            supersedes=previous.document_id,
+            registered_at=now,
+            updated_at=now,
+        )
+        self._save(new, None, f"new version of {previous.document_id}")
+        stored = self._mark_retrieved(new, content, digest, content_type, retrieved_at)
+        self.mark(previous.document_id, DocumentStatus.SUPERSEDED, note=f"superseded by {stored.document_id}")
+        return stored
 
     def mark(
         self,

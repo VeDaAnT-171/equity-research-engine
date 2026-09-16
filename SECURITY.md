@@ -10,9 +10,16 @@ The engine ingests documents and URLs supplied by users. Those inputs are untrus
 - **Strict schemas**: unknown config keys are rejected (typos cannot silently disable a setting).
 - **Secrets** come from environment variables only; see `.env.example`. `.env` is git-ignored.
 
-## Known gaps (to be closed in Phase 4, ingestion)
-- DNS-rebinding: hostnames are not resolved at validation time; the downloader must re-check the resolved IP.
-- Download size limits, content-type sniffing, and PDF sandboxing are not yet implemented.
+## Controls implemented (Phase 2)
+- **DNS rebinding guard**: every resolved address of a host must be public before connecting; redirect targets are re-validated.
+- **Size limits**: raw responses and gzip-decompressed bodies are capped (default 200 MB), defeating decompression bombs.
+- **Throttling**: at most one request per 150 ms per host (SEC fair-access limit is 10/s).
+- **Identification**: SEC requests refuse to run without `SEC_USER_AGENT` containing a contact email.
+- **Untrusted JSON**: parsed with Decimal; malformed observations are dropped and counted, never coerced.
+
+## Known gaps
+- Content-type sniffing and PDF sandboxing arrive with document parsing.
+- The fetcher resolves then connects; a resolver that answers differently between the two calls is not fully excluded.
 
 ## Reporting
 Open a private security advisory on the repository rather than a public issue.

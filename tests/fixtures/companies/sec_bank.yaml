@@ -1,0 +1,16 @@
+# Synthetic company used by pipeline tests. See tests/fixtures/sec/README.md.
+company:
+  name: "Example Bank Corp"
+  ticker: "EXBK"
+  exchange: "NYSE"
+  country: "United States"
+  identifiers:
+    cik: "0009999002"
+  reporting_currency: "USD"
+sources:
+  structured_filings:
+    - url: "https://data.sec.gov/api/xbrl/companyfacts/CIK0009999002.json"
+    - url: "https://data.sec.gov/submissions/CIK0009999002.json"
+  annual_reports:
+    - url: "https://example.com/exbk/annual-report-2025.pdf"
+      fiscal_period: FY2025

@@ -1,0 +1,24 @@
+{
+ "cik": "9999002",
+ "entityType": "operating",
+ "sic": "6021",
+ "sicDescription": "National Commercial Banks",
+ "name": "EXAMPLE BANK CORP",
+ "tickers": [
+  "EXBK"
+ ],
+ "exchanges": [
+  "NYSE"
+ ],
+ "fiscalYearEnd": "1231",
+ "filings": {
+  "recent": {
+   "accessionNumber": [
+    "0009999002-26-000010"
+   ],
+   "form": [
+    "10-K"
+   ]
+  }
+ }
+}

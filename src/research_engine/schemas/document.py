@@ -31,19 +31,22 @@ class DocumentStatus(str, Enum):
     PARSED = "parsed"
     EXTRACTED = "extracted"
     FAILED = "failed"
+    SUPERSEDED = "superseded"  # a newer retrieval of the same source replaced this version
 
 
+_S = DocumentStatus
 ALLOWED_TRANSITIONS: dict[DocumentStatus, frozenset[DocumentStatus]] = {
-    DocumentStatus.REGISTERED: frozenset({DocumentStatus.RETRIEVED, DocumentStatus.FAILED}),
-    DocumentStatus.RETRIEVED: frozenset({DocumentStatus.PARSED, DocumentStatus.FAILED}),
-    DocumentStatus.PARSED: frozenset({DocumentStatus.EXTRACTED, DocumentStatus.FAILED}),
+    _S.REGISTERED: frozenset({_S.RETRIEVED, _S.FAILED}),
+    _S.RETRIEVED: frozenset({_S.PARSED, _S.FAILED, _S.SUPERSEDED}),
+    _S.PARSED: frozenset({_S.EXTRACTED, _S.FAILED, _S.SUPERSEDED}),
     # re-parse after a parser upgrade
-    DocumentStatus.EXTRACTED: frozenset({DocumentStatus.PARSED, DocumentStatus.FAILED}),
+    _S.EXTRACTED: frozenset({_S.PARSED, _S.FAILED, _S.SUPERSEDED}),
     # explicit retry
-    DocumentStatus.FAILED: frozenset({DocumentStatus.REGISTERED}),
+    _S.FAILED: frozenset({_S.REGISTERED}),
+    _S.SUPERSEDED: frozenset(),  # terminal: kept for lineage of facts extracted from it
 }
 
-_HAS_CONTENT = {DocumentStatus.RETRIEVED, DocumentStatus.PARSED, DocumentStatus.EXTRACTED}
+_HAS_CONTENT = {_S.RETRIEVED, _S.PARSED, _S.EXTRACTED, _S.SUPERSEDED}
 
 
 class DocumentRecord(StrictModel):
@@ -62,6 +65,7 @@ class DocumentRecord(StrictModel):
     status: DocumentStatus
     parser_version: Optional[str] = None
     error: Optional[str] = None
+    supersedes: Optional[str] = Field(default=None, pattern=DOCUMENT_ID_PATTERN)
     registered_at: datetime
     updated_at: datetime
 
@@ -71,6 +75,8 @@ class DocumentRecord(StrictModel):
             raise ValueError("a document must have exactly one of source_url / local_source_path")
         if self.status in _HAS_CONTENT and not (self.file_hash and self.raw_path and self.retrieval_timestamp):
             raise ValueError(f"status '{self.status.value}' requires file_hash, raw_path and retrieval_timestamp")
+        if self.supersedes == self.document_id:
+            raise ValueError("a document cannot supersede itself")
         if self.status in {DocumentStatus.PARSED, DocumentStatus.EXTRACTED} and not self.parser_version:
             raise ValueError(f"status '{self.status.value}' requires parser_version")
         if self.status is DocumentStatus.FAILED and not self.error:

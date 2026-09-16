@@ -16,6 +16,27 @@ from .document import DocumentType
 from .framework import ValuationFamily
 
 
+def validate_public_https_url(v: str) -> str:
+    """Static URL checks. The downloader additionally checks resolved IPs (DNS rebinding)."""
+    parsed = urlparse(v)
+    if parsed.scheme != "https":
+        raise ValueError(f"only https URLs are accepted (got scheme {parsed.scheme!r} in {v!r})")
+    host = parsed.hostname
+    if not host:
+        raise ValueError(f"URL has no host: {v!r}")
+    if parsed.username or parsed.password:
+        raise ValueError("URLs with embedded credentials are rejected; use environment variables")
+    if host == "localhost" or host.endswith((".local", ".internal", ".localhost")):
+        raise ValueError(f"refusing internal host {host!r}")
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return v
+    if not ip.is_global:
+        raise ValueError(f"refusing non-public IP address {host!r}")
+    return v
+
+
 class SourceRef(StrictModel):
     url: Optional[str] = None
     path: Optional[Path] = None
@@ -31,25 +52,7 @@ class SourceRef(StrictModel):
     @field_validator("url")
     @classmethod
     def _safe_url(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        parsed = urlparse(v)
-        if parsed.scheme != "https":
-            raise ValueError(f"only https URLs are accepted (got scheme {parsed.scheme!r} in {v!r})")
-        host = parsed.hostname
-        if not host:
-            raise ValueError(f"URL has no host: {v!r}")
-        if parsed.username or parsed.password:
-            raise ValueError("URLs with embedded credentials are rejected; use environment variables")
-        if host == "localhost" or host.endswith((".local", ".internal", ".localhost")):
-            raise ValueError(f"refusing internal host {host!r}")
-        try:
-            ip = ipaddress.ip_address(host)
-        except ValueError:
-            return v
-        if not ip.is_global:
-            raise ValueError(f"refusing non-public IP address {host!r}")
-        return v
+        return None if v is None else validate_public_https_url(v)
 
     @model_validator(mode="after")
     def _one_location(self) -> "SourceRef":
@@ -160,6 +163,8 @@ class CompanyProfile(StrictModel):
     identifiers: CompanyIdentifiers = Field(default_factory=CompanyIdentifiers)
     reporting_currency: Optional[str] = Field(default=None, pattern=CURRENCY_PATTERN)
     fiscal_year_end_month: Optional[int] = Field(default=None, ge=1, le=12)
+    # How fiscal years are labelled: by the calendar year they end in (most issuers) or begin in.
+    fiscal_year_convention: Literal["end_year", "start_year"] = "end_year"
     company_id: Optional[str] = Field(default=None, pattern=SLUG_PATTERN)
 
     @field_validator("ticker", mode="before")

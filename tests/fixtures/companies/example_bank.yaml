@@ -6,7 +6,7 @@ company:
   country: "United States"
   industry_framework: banks
   identifiers:
-    cik: 1234567
+    cik: 9999002   # synthetic; high CIKs are unassigned
 sources:
   investor_relations:
     url: "https://example.com/investors"

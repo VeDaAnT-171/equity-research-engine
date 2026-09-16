@@ -3,9 +3,9 @@
 A company-agnostic engine that turns primary company disclosures into reproducible, auditable equity research.
 The company is an **input** (a YAML file). The engine is the product.
 
-> **Status: Phase 1 of 8 — foundation.** Configuration, canonical schemas, industry frameworks, document registry
-> and lineage are implemented and tested. Extraction, forecasting, valuation and reporting are **not built yet**.
-> `make research` fails loudly until they are.
+> **Status: Phase 2 of 8 — structured ingestion.** SEC XBRL data is retrieved, identity-checked, mapped onto
+> industry frameworks and written out with filing-level lineage. Historical analysis, forecasting, valuation and
+> reporting are **not built yet**. `make research` fails loudly until they are.
 
 ## What works today
 
@@ -17,6 +17,9 @@ The company is an **input** (a YAML file). The engine is the product.
 | Industry frameworks as data | `industry_frameworks/*.yaml` | Inheritance, removals, reference and cycle checks, valuation-method compatibility |
 | Document registry | `registry/document_registry.py` | Content-addressed, read-only raw store; never overwrites; enforced status machine |
 | Lineage graph | `lineage/graph.py` | Report element → chart → model → fact → document → source URL; broken lineage detectable |
+| SEC ingestion | `sources/sec.py`, `ingestion/http.py`, `pipeline/ingest.py` | Cached, versioned downloads; CIK/ticker/fiscal-year-end checked against SEC before any fact is trusted |
+| Fiscal calendar | `calendar.py` | Periods derived from start/end dates (never SEC's filing-level `fy`/`fp`); 52/53-week years handled |
+| XBRL extraction | `extraction/xbrl.py` | Framework decides concepts; comparatives deduplicated; restatements kept side by side; every skip counted |
 | Company-agnostic guard | `tests/test_company_agnostic.py` | CI fails if any configured company's ticker/name/CIK appears in engine code or frameworks |
 
 ## Quick start
@@ -26,7 +29,21 @@ make install
 make test
 make frameworks
 make validate CONFIG=companies/nyse-jpm/config.yaml
+cp .env.example .env   # set SEC_USER_AGENT="Your Name you@example.com"
+make ingest CONFIG=companies/nyse-jpm/config.yaml
+make ingest CONFIG=companies/nyse-jpm/config.yaml ARGS=--refresh   # re-download; changed filings become new versions
 ```
+
+`make ingest` writes to `companies/<id>/output/`:
+
+| File | Contents |
+|---|---|
+| `facts.jsonl` | Every extracted fact version with full lineage (concept, accession, form, filed date, document id) |
+| `facts_current.csv` | One value per metric/period: the latest filed disclosure, with lineage columns |
+| `historical_annual.csv`, `historical_interim.csv` | Wide views for inspection |
+| `extraction_report.md/.json` | Coverage by metric, restatements, concept switches, gaps, skip reasons |
+| `lineage.json` | Fact → document → source URL graph |
+| `sources.md`, `manifest.json` | Document hashes and versions; engine/parser/config versions for reproducibility |
 
 Add a company: create `companies/<exchange>-<ticker>/config.yaml`. No code changes.
 
@@ -44,8 +61,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/adr/](docs/adr/).
 ## Roadmap
 
 1. **Foundation** — config, schemas, frameworks, registry, lineage ✅
-2. **Structured ingestion** — SEC companyfacts/submissions adapter, downloader with caching, XBRL → canonical facts
-3. **Classification + data quality** — SIC-based candidates, accounting identity checks, `data_quality_report`
+2. **Structured ingestion** — SEC companyfacts/submissions adapters, cached downloader, SIC framework selection, XBRL → canonical facts ✅
+3. **Data quality** — accounting identities, Q4 and quarterly cash-flow derivation from year-to-date values, outlier and continuity checks, `data_quality_report`
 4. **Historical analysis** — framework-driven ratios, charts, reconciliation flags
 5. **Forecast** — driver graph evaluation, assumption registry, scenarios
 6. **Valuation + reverse valuation** — DCF/FCFF, residual income, multiples; solve for market-implied drivers
@@ -56,8 +73,10 @@ Later: PDF/HTML KPI extraction, ESEF adapter, dashboard, event studies.
 
 ## Limitations
 
-- No data is fetched or extracted yet.
-- Framework XBRL concepts are candidate lists; filer coverage is unverified until Phase 2.
+- Structured ingestion covers SEC filers only (US domestic plus 20-F/40-F filers that tag in XBRL). ESEF is not implemented.
+- Q4 values and quarterly cash flows are not tagged directly by filers; they are derived in Phase 3, so interim tables are incomplete.
+- Framework XBRL concept lists are candidates. Each run's extraction report shows which tagged metrics had no data for that filer.
+- Tests use synthetic SEC-format fixtures. The format follows SEC documentation, but a live run against a real filer is the first check against production payloads.
 - Four frameworks ship (generic, banks, software, industrials). Insurance, asset managers, REITs, energy, etc. are not written.
 - No consensus data source. Consensus will only appear if a user supplies a document for it.
 

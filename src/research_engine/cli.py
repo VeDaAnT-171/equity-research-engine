@@ -6,9 +6,13 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from .errors import ResearchEngineError
 from .config import load_project_config
+from .errors import ResearchEngineError
 from .frameworks import FrameworkRegistry
+from .ingestion import HttpFetcher, load_env_file
+from .ingestion.http import require_contact_user_agent
+from .pipeline import run_ingestion
+from .pipeline.ingest import requires_sec_access
 from .versioning import version_stamp
 
 
@@ -69,10 +73,46 @@ def _cmd_frameworks(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_ingest(args: argparse.Namespace) -> int:
+    try:
+        if args.env_file:
+            load_env_file(args.env_file)
+        config = load_project_config(args.config)
+        registry = FrameworkRegistry(args.frameworks)
+        fetcher = None
+        if not args.offline:
+            ua = os.environ.get("SEC_USER_AGENT")
+            if requires_sec_access(config):
+                ua = require_contact_user_agent(ua)
+            fetcher = HttpFetcher(ua or "research-engine")
+        workspace = args.workspace or args.config.resolve().parent
+        result = run_ingestion(config, workspace=workspace, frameworks=registry, fetcher=fetcher,
+                               refresh=args.refresh, offline=args.offline)
+    except ResearchEngineError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"ingested {result.company_id} -> {result.output_dir}")
+    for o in result.outcomes:
+        detail = f" ({o.detail})" if o.detail else ""
+        print(f"  [{o.action:<11}] {o.record.document_type.value:<24} {o.record.status.value:<10}{detail}")
+    if result.profile:
+        print(f"  entity:     {result.profile.name} CIK {result.profile.cik} SIC {result.profile.sic}")
+    if result.framework:
+        print(f"  framework:  {result.framework.name} via {result.framework.method} ({result.framework.evidence})")
+    if result.extraction:
+        r = result.extraction
+        print(f"  facts:      {r.facts_emitted} from {r.observations_mapped}/{r.observations_total} mapped observations")
+        print(f"  gaps:       {len(r.metrics_without_data)} tagged metrics without data, "
+              f"{len(r.metrics_requiring_documents)} need document extraction")
+    for w in result.warnings:
+        print(f"  warning:    {w}")
+    return 3 if result.failures else 0
+
+
 def _cmd_research(args: argparse.Namespace) -> int:
     print(
-        "error: the research pipeline is not implemented yet. Phase 1 provides configuration, schemas, "
-        "industry frameworks, the document registry and lineage. Use `validate`.",
+        "error: the full research pipeline is not implemented yet. Implemented stages: `validate`, `ingest`.",
         file=sys.stderr,
     )
     return 2
@@ -91,6 +131,15 @@ def main(argv: list[str] | None = None) -> int:
     p_fw = sub.add_parser("frameworks", help="list and validate industry frameworks")
     p_fw.add_argument("--frameworks", type=Path, default=_default_frameworks())
     p_fw.set_defaults(func=_cmd_frameworks)
+
+    p_ingest = sub.add_parser("ingest", help="retrieve sources, verify identity, extract XBRL facts with lineage")
+    p_ingest.add_argument("--config", required=True, type=Path)
+    p_ingest.add_argument("--frameworks", type=Path, default=_default_frameworks())
+    p_ingest.add_argument("--workspace", type=Path, default=None, help="defaults to the config file's directory")
+    p_ingest.add_argument("--refresh", action="store_true", help="re-download sources; changed content becomes a new version")
+    p_ingest.add_argument("--offline", action="store_true", help="use cached documents only")
+    p_ingest.add_argument("--env-file", type=Path, default=Path(".env"))
+    p_ingest.set_defaults(func=_cmd_ingest)
 
     p_research = sub.add_parser("research", help="run the full pipeline (not yet implemented)")
     p_research.add_argument("--config", required=True, type=Path)

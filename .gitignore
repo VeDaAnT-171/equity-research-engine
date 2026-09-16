@@ -6,3 +6,6 @@ __pycache__/
 data/
 output/
 *.sqlite
+companies/*/data/
+companies/*/output/
+.incoming-*

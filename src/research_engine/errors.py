@@ -1,4 +1,4 @@
-"""Exception hierarchy. Every failure surfaces as one of these with a actionable message."""
+"""Exception hierarchy. Every failure surfaces as one of these with an actionable message."""
 
 from pydantic import ValidationError
 
@@ -21,6 +21,14 @@ class RegistryError(ResearchEngineError):
 
 class LineageError(ResearchEngineError):
     """Broken or cyclic data lineage."""
+
+
+class FetchError(ResearchEngineError):
+    """A document could not be retrieved."""
+
+
+class ExtractionError(ResearchEngineError):
+    """A retrieved document could not be parsed, or contradicts the configuration."""
 
 
 def format_validation_error(exc: ValidationError) -> str:

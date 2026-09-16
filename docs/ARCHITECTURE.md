@@ -23,7 +23,7 @@ flowchart TD
     F -. lineage .-> O
 ```
 
-Phase 1 implements A–C, the schemas for F and K, the framework system for H, and the lineage graph used by O.
+Phases 1–2 implement A–D, E1, F, SIC-based H, the schemas for K, and the lineage graph used by O.
 
 ## Package map
 
@@ -34,6 +34,12 @@ src/research_engine/
   frameworks/   framework loading, inheritance, reference validation, SIC candidates
   registry/     SQLite document registry, content-addressed raw store
   lineage/      lineage DAG
+  sources/      pluggable structured-data adapters (SEC submissions, SEC companyfacts)
+  ingestion/    hardened HTTP fetcher, .env loader
+  extraction/   XBRL observations -> canonical facts
+  pipeline/     ingestion orchestration and output writers
+  calendar.py   fiscal calendar (dates -> fiscal periods)
+  classification.py  framework selection (override > SIC > generic)
   expressions.py  whitelisted-AST arithmetic for derivations and driver formulas
   cli.py        validate | frameworks | research
 industry_frameworks/   metrics, drivers, valuation policy per industry (data)
@@ -55,9 +61,18 @@ companies/             one directory per company (data)
 | D9 | Assumption types carry source requirements | Guidance/consensus cannot be fabricated or mislabeled | Analysts must write rationales |
 | D10 | The engine quantifies theses; analysts author them | An automated "variant view" is either boilerplate or unsourced inference, which contradicts the no-fabrication rule | Each company needs human input before a report is meaningful |
 
+| D11 | Fiscal periods come from start/end dates and the fiscal year end, never SEC's `fy`/`fp` | `fy`/`fp` describe the filing: a FY2025 10-K tags its FY2024 comparative with fy=2025 | Requires a known fiscal year end (config or SEC submissions) |
+| D12 | Changed source content becomes a new document version that supersedes the old | API snapshots like companyfacts change with every filing; Phase 1's refusal would have blocked refreshes | Registry grows with each changed snapshot |
+| D13 | Keep first disclosure of each distinct value; different values for a period are restatements, both kept | Comparatives repeat values across filings; restatements must remain visible | "Current" is a view (latest filed), not the stored truth |
+| D14 | Per period, the highest-ranked concept wins; lower-ranked ones are recorded as shadowed | Mixing `Revenues` and contract-revenue tags silently changes definitions | Concept switches across years are flagged, not reconciled |
+| D15 | Identity (CIK in URL, ticker, fiscal year end) is verified before facts are trusted | Wrong-company data is the most damaging silent failure | A ticker change requires a config update |
+
 ## Invariants tested
 
 - No configured company identifier appears in `src/` or `industry_frameworks/`.
 - No code branches on ticker/name/CIK.
 - A new company validates with only a config file.
 - Every shipped framework resolves with no dangling references or circular derivations.
+- Restated values are never overwritten; comparatives never duplicate facts.
+- Every skipped XBRL observation is counted under a reason.
+- Wrong CIK fails before any network call; wrong ticker fails before extraction.

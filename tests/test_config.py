@@ -30,7 +30,7 @@ def test_loads_fixtures(bank_config_path, industrial_config_path):
     ind = load_project_config(industrial_config_path)
     assert bank.company_id == "nyse-exbk"
     assert bank.company.ticker == "EXBK"                 # normalised to upper case
-    assert bank.company.identifiers.cik == "0001234567"  # zero-padded
+    assert bank.company.identifiers.cik == "0009999002"  # zero-padded
     assert bank.research.valuation_methods == (ValuationFamily.INTRINSIC, ValuationFamily.RELATIVE)
     assert ind.company_id == "xetra-exin"
     assert ind.company.reporting_currency == "EUR"

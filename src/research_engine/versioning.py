@@ -1,8 +1,8 @@
 """Version identifiers recorded on every artifact the engine produces."""
 
-ENGINE_VERSION = "0.1.0"
+ENGINE_VERSION = "0.2.0"
 SCHEMA_VERSION = "1"
-PARSER_VERSION = "0.0.0"  # no parsers exist yet
+PARSER_VERSION = "0.2.0"  # SEC submissions + companyfacts adapters
 
 
 def version_stamp() -> dict[str, str]:
