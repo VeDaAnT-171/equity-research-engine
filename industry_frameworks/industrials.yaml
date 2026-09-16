@@ -58,5 +58,7 @@ drivers:
     affects: [operating_income]
     formula: revenue * operating_margin
 
+forecast_targets: [ebitda, depreciation_and_amortization, inventory]
+
 valuation:
   preferred: [dcf_fcff, ev_ebitda, pe]

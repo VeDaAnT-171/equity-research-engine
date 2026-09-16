@@ -9,7 +9,7 @@ classification:
 
 # Industrial concepts that are meaningless or misleading for a bank.
 remove_metrics: [cost_of_revenue, gross_profit, operating_income, capital_expenditure, free_cash_flow, total_debt]
-remove_drivers: [operating_leverage]
+remove_drivers: [operating_leverage, pretax_bridge]
 
 metrics:
   - id: net_interest_income
@@ -52,6 +52,22 @@ metrics:
     statement: income_statement
     period_type: duration
     xbrl_concepts: [us-gaap:NetIncomeLossAvailableToCommonStockholdersBasic]
+  - id: pre_tax_income
+    name: Pre-tax income
+    description: A bank has no operating-income line; pre-tax income is revenue less noninterest expense and provisions.
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest, ifrs-full:ProfitLossBeforeTax]
+    derivation: revenue - noninterest_expense - provision_for_credit_losses
+  - id: diluted_eps
+    name: Diluted EPS
+    description: Attributable to common shareholders, after preferred dividends.
+    unit_kind: currency_per_share
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:EarningsPerShareDiluted, ifrs-full:DilutedEarningsLossPerShare]
+    derivation: net_income_to_common / diluted_shares
   - id: loans
     name: Loans, net
     unit_kind: currency
@@ -100,7 +116,9 @@ metrics:
 
 remove_analytics: [operating_income_growth, gross_margin, operating_margin, free_cash_flow_margin, nopat, invested_capital,
                    roic, asset_turnover, capex_to_revenue, capex_to_operating_cash_flow, debt_to_equity, net_debt,
-                   degree_of_operating_leverage]
+                   degree_of_operating_leverage, pretax_conversion]
+# Industrial forecast targets that do not exist for a bank.
+remove_forecast_targets: [gross_profit, operating_income, free_cash_flow]
 remove_charts: [margins, returns, cash_flow, leverage]
 
 analytics:
@@ -113,6 +131,7 @@ analytics:
   - {id: credit_loss_rate, name: Provision / average loans, category: credit, kind: ratio, unit_kind: ratio, numerator: provision_for_credit_losses, denominator: loans, denominator_basis: average}
   - {id: loan_to_deposit, name: Loans / deposits, category: liquidity, kind: ratio, unit_kind: ratio, numerator: loans, denominator: deposits}
   - {id: equity_to_assets, name: Equity / assets, category: capital, kind: ratio, unit_kind: ratio, numerator: total_equity, denominator: total_assets}
+  - {id: common_attribution, name: Earnings attributable to common, description: "Net income to common / net income; preferred dividends and minority interests as a conversion rate.", category: profitability, kind: ratio, unit_kind: ratio, numerator: net_income_to_common, denominator: net_income}
   - {id: rotce, name: Return on average tangible common equity, category: returns, kind: ratio, unit_kind: ratio, numerator: net_income_to_common, denominator: tangible_common_equity, denominator_basis: average}
 
 charts:
@@ -134,10 +153,32 @@ drivers:
     name: Credit costs
     affects: [provision_for_credit_losses]
     formula: loans * credit_loss_rate
+  - id: preferred_attribution
+    name: Attribution to common
+    description: Preferred dividends and minority interests between net income and income to common.
+    affects: [net_income_to_common]
+    formula: net_income * common_attribution
   - id: capital_constraint
     name: Capital requirement
     description: CET1 x RWA bounds distributable capital.
     affects: [cet1_ratio]
+
+forecast_targets:
+  - net_interest_income
+  - noninterest_income
+  - noninterest_expense
+  - provision_for_credit_losses
+  - revenue
+  - pre_tax_income
+  - income_tax_expense
+  - net_income
+  - net_income_to_common
+  - diluted_eps
+  - loans
+  - deposits
+  - total_equity
+  - tangible_common_equity
+  - cet1_ratio
 
 valuation:
   preferred: [residual_income, ptbv, pb, pe, dividend_discount]

@@ -26,6 +26,7 @@ def _merge(parent: IndustryFramework, child: IndustryFramework) -> IndustryFrame
         | (set(child.remove_checks) - {c.id for c in parent.checks})
         | (set(child.remove_analytics) - parent.analytic_ids)
         | (set(child.remove_charts) - {c.id for c in parent.charts})
+        | (set(child.remove_forecast_targets) - set(parent.forecast_targets))
     )
     if unknown_removals:
         raise FrameworkError(f"{child.name}: cannot remove items not defined by parent: {sorted(unknown_removals)}")
@@ -47,6 +48,10 @@ def _merge(parent: IndustryFramework, child: IndustryFramework) -> IndustryFrame
         analytics=_merge_by_id(parent.analytics, child.analytics, set(child.remove_analytics)),
         charts=_merge_by_id(parent.charts, child.charts, set(child.remove_charts)),
         valuation=ValuationPolicy(preferred=preferred, excluded=excluded),
+        forecast_targets=tuple(dict.fromkeys(
+            [t for t in parent.forecast_targets if t not in set(child.remove_forecast_targets)]
+            + list(child.forecast_targets)
+        )),
         report_sections=child.report_sections or parent.report_sections,
     )
 
@@ -103,7 +108,7 @@ class FrameworkRegistry:
             current = self._raw[current].extends
         resolved = self._raw[chain[-1]]
         if any((resolved.remove_metrics, resolved.remove_drivers, resolved.remove_checks,
-                resolved.remove_analytics, resolved.remove_charts)):
+                resolved.remove_analytics, resolved.remove_charts, resolved.remove_forecast_targets)):
             raise FrameworkError(f"{resolved.name}: a root framework cannot remove inherited items")
         for child in reversed(chain[:-1]):
             try:

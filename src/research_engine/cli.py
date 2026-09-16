@@ -14,6 +14,7 @@ from .ingestion.http import require_contact_user_agent
 from .pipeline import run_ingestion
 from .pipeline.ingest import requires_sec_access
 from .pipeline.analysis import run_analysis_stage
+from .pipeline.forecast import run_forecast_stage
 from .pipeline.quality import run_quality_stage
 from .versioning import version_stamp
 
@@ -150,9 +151,37 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_forecast(args: argparse.Namespace) -> int:
+    try:
+        config = load_project_config(args.config)
+        registry = FrameworkRegistry(args.frameworks)
+        workspace = args.workspace or args.config.resolve().parent
+        result = run_forecast_stage(config, workspace=workspace, frameworks=registry)
+    except ResearchEngineError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    f = result.forecast
+    years = list(f.forecast_years)
+    print(f"forecast for {config.company_id} -> {result.output_dir / 'forecast.md'}")
+    print(f"  horizon:   base FY{f.base_year}, projecting FY{years[0]}-FY{years[-1]}" if years else "  horizon:   none")
+    print(f"  scenarios: {', '.join(f.by_scenario)}")
+    print(f"  plan:      {len(f.graph.rules)} metrics; "
+          f"{sum(1 for r in f.graph.rules.values() if r.is_exogenous)} exogenous, "
+          f"{sum(1 for r in f.graph.rules.values() if not r.is_exogenous)} computed")
+    seeded, analyst = len(f.seeded), len(f.assumptions.all) - len(f.seeded)
+    print(f"  assumptions: {seeded} seeded from history, {analyst} analyst-supplied, {len(f.unseeded)} unseeded")
+    if not result.assumptions_file_present:
+        print(f"  note:      no {result.assumptions_path.name}; forecasting on seeded history alone "
+              "(no guidance, consensus or scenarios)")
+    print(f"  values:    {len(f.values)} projected; "
+          f"{sum(f.not_projected.values())} metric-years not projected (reasons in assumptions.json)")
+    return 0
+
+
 def _cmd_research(args: argparse.Namespace) -> int:
     print(
-        "error: the full research pipeline is not implemented yet. Implemented stages: `validate`, `ingest`, `quality`, `analyze`.",
+        "error: the full research pipeline is not implemented yet. Implemented stages: `validate`, `ingest`, "
+        "`quality`, `analyze`, `forecast`. Valuation and report rendering are not built.",
         file=sys.stderr,
     )
     return 2
@@ -193,6 +222,12 @@ def main(argv: list[str] | None = None) -> int:
     p_analyze.add_argument("--frameworks", type=Path, default=_default_frameworks())
     p_analyze.add_argument("--workspace", type=Path, default=None, help="defaults to the config file's directory")
     p_analyze.set_defaults(func=_cmd_analyze)
+
+    p_forecast = sub.add_parser("forecast", help="project the driver graph over scenarios from the assumption registry")
+    p_forecast.add_argument("--config", required=True, type=Path)
+    p_forecast.add_argument("--frameworks", type=Path, default=_default_frameworks())
+    p_forecast.add_argument("--workspace", type=Path, default=None, help="defaults to the config file's directory")
+    p_forecast.set_defaults(func=_cmd_forecast)
 
     p_research = sub.add_parser("research", help="run the full pipeline (not yet implemented)")
     p_research.add_argument("--config", required=True, type=Path)

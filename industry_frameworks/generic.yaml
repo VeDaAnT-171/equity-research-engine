@@ -52,12 +52,14 @@ metrics:
     statement: income_statement
     period_type: duration
     xbrl_concepts: [us-gaap:NetIncomeLoss, ifrs-full:ProfitLoss]
+    derivation: pre_tax_income - income_tax_expense
   - id: diluted_eps
     name: Diluted EPS
     unit_kind: currency_per_share
     statement: income_statement
     period_type: duration
     xbrl_concepts: [us-gaap:EarningsPerShareDiluted, ifrs-full:DilutedEarningsLossPerShare]
+    derivation: net_income / diluted_shares
   - id: diluted_shares
     name: Weighted average diluted shares
     unit_kind: count
@@ -190,6 +192,7 @@ analytics:
   - {id: net_margin, name: Net margin, category: profitability, kind: ratio, unit_kind: ratio, numerator: net_income, denominator: revenue}
   - {id: free_cash_flow_margin, name: Free cash flow margin, category: profitability, kind: ratio, unit_kind: ratio, numerator: free_cash_flow, denominator: revenue}
   - {id: effective_tax_rate, name: Effective tax rate, category: profitability, kind: ratio, unit_kind: ratio, numerator: income_tax_expense, denominator: pre_tax_income}
+  - {id: pretax_conversion, name: Pre-tax conversion of operating income, description: "Below-the-line items (interest, other income) as a conversion rate; the forecast bridge from operating to pre-tax income.", category: profitability, kind: ratio, unit_kind: ratio, numerator: pre_tax_income, denominator: operating_income}
   - {id: return_on_average_equity, name: Return on average equity, category: returns, kind: ratio, unit_kind: ratio, numerator: net_income, denominator: total_equity, denominator_basis: average}
   - {id: return_on_average_assets, name: Return on average assets, category: returns, kind: ratio, unit_kind: ratio, numerator: net_income, denominator: total_assets, denominator_basis: average}
   - id: nopat
@@ -246,6 +249,29 @@ drivers:
     name: Operating margin
     affects: [operating_income]
     formula: revenue * operating_margin
+  - id: pretax_bridge
+    name: Below-the-line conversion
+    description: Interest and other items between operating and pre-tax income, as a conversion rate.
+    affects: [pre_tax_income]
+    formula: operating_income * pretax_conversion
+  - id: tax
+    name: Effective tax rate
+    affects: [income_tax_expense]
+    formula: pre_tax_income * effective_tax_rate
+
+# Metrics the forecast must produce even where no driver names them. The driver graph
+# expands these transitively through driver formulas and framework derivations.
+forecast_targets:
+  - revenue
+  - gross_profit
+  - operating_income
+  - pre_tax_income
+  - income_tax_expense
+  - net_income
+  - diluted_eps
+  - operating_cash_flow
+  - free_cash_flow
+  - total_equity
 
 valuation:
   preferred: [dcf_fcff, ev_ebitda, pe, ev_revenue]

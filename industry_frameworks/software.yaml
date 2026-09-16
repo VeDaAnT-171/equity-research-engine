@@ -61,6 +61,8 @@ drivers:
     name: Net revenue retention
     affects: [annual_recurring_revenue]
 
+forecast_targets: [annual_recurring_revenue, stock_based_compensation]
+
 valuation:
   preferred: [dcf_fcff, ev_revenue, ev_fcf, pe]
   excluded:

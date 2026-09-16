@@ -31,6 +31,10 @@ class ExtractionError(ResearchEngineError):
     """A retrieved document could not be parsed, or contradicts the configuration."""
 
 
+class ForecastError(ResearchEngineError):
+    """The driver graph or assumption registry cannot produce a forecast."""
+
+
 def format_validation_error(exc: ValidationError) -> str:
     lines = []
     for err in exc.errors():

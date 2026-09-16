@@ -3,10 +3,11 @@
 A company-agnostic engine that turns primary company disclosures into reproducible, auditable equity research.
 The company is an **input** (a YAML file). The engine is the product.
 
-> **Status: Phase 4 of 8 — historical analysis.** SEC XBRL data is retrieved, identity-checked, completed with
-> derived facts, tested against accounting identities, and turned into framework-defined analytics, descriptive
-> statistics and charts, all traceable from chart to source URL. Forecasting, valuation and reporting are
-> **not built yet**. `make research` fails loudly until they are.
+> **Status: Phase 5 of 8 — forecast.** SEC XBRL data is retrieved, identity-checked, completed with derived
+> facts, tested against accounting identities, turned into framework-defined analytics and charts, and now
+> projected forward through the framework's driver graph under an assumption registry and named scenarios.
+> Every projected figure traces to the assumption behind it and on to a filed document. Valuation and report
+> rendering are **not built yet**. `make research` fails loudly until they are.
 >
 > All tests run on **synthetic** SEC-format data. The engine has not yet been run against a live filing.
 
@@ -27,6 +28,9 @@ The company is an **input** (a YAML file). The engine is the product.
 | Data-quality checks | `quality/checks.py`, `industry_frameworks/*.yaml` | Accounting identities as framework data; sign, scale-break, outlier and gap rules with stated thresholds; missing inputs reported as "not evaluable", never as passes |
 | Historical analytics | `analysis/engine.py`, `industry_frameworks/*.yaml` | Growth, margins, returns, leverage, efficiency, operating leverage defined as data; balance-sheet denominators use an explicit basis (average / opening); facts failing error checks are excluded, warnings carried as flags |
 | Charts and summaries | `analysis/charts.py`, `analysis/summary.py` | Framework-defined SVG/PNG charts marking derived and flagged points; descriptive statistics labelled as model output |
+| Driver graph | `forecast/drivers.py`, `industry_frameworks/*.yaml` | Framework drivers resolved into an evaluation plan; derivations re-applied forward; derivation/driver cycles broken by demotion, never silently |
+| Assumption registry | `forecast/assumptions.py`, `schemas/assumption.py` | Engine seeds `historical` assumptions from verified facts with lineage; analyst supplies guidance/consensus/judgement; guidance needs a cited document and analysts cannot claim `historical` |
+| Scenario forecast | `forecast/engine.py` | Fixed precedence ladder, per-year overrides, independent scenario projections; unset assumptions refuse to project rather than fall back |
 | Company-agnostic guard | `tests/test_company_agnostic.py` | CI fails if any configured company's ticker/name/CIK appears in engine code or frameworks |
 
 ## Quick start
@@ -41,8 +45,14 @@ make ingest CONFIG=companies/nyse-jpm/config.yaml
 make ingest CONFIG=companies/nyse-jpm/config.yaml ARGS=--refresh   # re-download; changed filings become new versions
 make quality CONFIG=companies/nyse-jpm/config.yaml                  # QARGS=--strict to fail on error-severity issues
 make analyze CONFIG=companies/nyse-jpm/config.yaml                  # historical analytics, charts, Parquet
-make data CONFIG=companies/nyse-jpm/config.yaml                     # ingest + quality + analyze
+make forecast CONFIG=companies/nyse-jpm/config.yaml                 # driver graph, assumptions, scenarios
+make data CONFIG=companies/nyse-jpm/config.yaml                     # ingest + quality + analyze + forecast
 ```
+
+Assumptions are optional. With no `companies/<id>/assumptions.yaml`, the forecast runs on history the engine
+seeded itself and says so. To supply guidance, consensus, your own judgement or scenarios, copy
+`companies/nyse-jpm/assumptions.example.yaml` to `assumptions.yaml` and edit it; run `make forecast` once first
+and read `output/assumptions.json` to see exactly which assumption keys the framework asks for.
 
 `make ingest` writes to `companies/<id>/output/`:
 
@@ -76,6 +86,15 @@ make data CONFIG=companies/nyse-jpm/config.yaml                     # ingest + q
 | `charts/*.svg`, `charts/*.png`, `charts/index.json` | Framework-defined charts; hollow markers / hatched bars = derived, † = flagged input |
 | `analysis_manifest.json` | Versions, framework hash, hashes of the ingestion and quality manifests used |
 
+`make forecast` adds:
+
+| File | Contents |
+|---|---|
+| `forecast.parquet`, `forecast.csv` | Projected values by scenario, metric and fiscal year, with the method, the assumption ids and types behind each figure, and lineage to prior values and base-year facts |
+| `assumptions.json` | Every assumption in force with its rung and provenance, the full projection plan, assumptions history could not seed, demoted derivations, and every metric-year not projected with its reason |
+| `forecast.md` | Projection plan, scenario tables, assumptions in force, and everything refused — labelled MODEL OUTPUT, no interpretation |
+| `forecast_manifest.json` | Versions, framework hash, hash of the analysis manifest and of the assumptions file used |
+
 Add a company: create `companies/<exchange>-<ticker>/config.yaml`. No code changes.
 
 ## Design in one paragraph
@@ -95,7 +114,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/adr/](docs/adr/).
 2. **Structured ingestion** — SEC companyfacts/submissions adapters, cached downloader, SIC framework selection, XBRL → canonical facts ✅
 3. **Data quality** — interim and framework derivations with lineage, accounting identities, sign/scale/outlier/gap checks, `data_quality_report.html` ✅
 4. **Historical analysis** — framework-defined analytics with explicit balance bases, quality gating, descriptive statistics, charts, Parquet ✅
-5. **Forecast** — driver graph evaluation, assumption registry, scenarios
+5. **Forecast** — driver graph evaluation, assumption registry, scenarios ✅
 6. **Valuation + reverse valuation** — DCF/FCFF, residual income, multiples; solve for market-implied drivers
 7. **Research output** — HTML/PDF report; thesis, catalysts, falsifiers from analyst YAML, quantified by the engine
 8. **Second contrasting company end to end** (proves agnosticism with output, not just tests)
@@ -116,6 +135,15 @@ Later: PDF/HTML KPI extraction, ESEF adapter, dashboard, event studies.
 - Tests use synthetic SEC-format fixtures. The format follows SEC documentation, but a live run against a real filer is the first check against production payloads.
 - Four frameworks ship (generic, banks, software, industrials). Insurance, asset managers, REITs, energy, etc. are not written.
 - No consensus data source. Consensus will only appear if a user supplies a document for it.
+- Forecast metrics with no driver formula and no derivation are projected by a trailing-median growth rate. That is
+  the weakest link in any output here; `forecast.md` lists every metric produced this way. The fix is framework
+  data — more derivations and driver formulas — not engine code.
+- Forecasts are annual and deterministic. There is no interim forecast, no Monte Carlo, and no sensitivity grid;
+  scenarios are discrete and analyst-declared.
+- A driver formula cannot reference a prior-period value, so working-capital roll-forwards and balance-sheet
+  closing identities (`equity[t] = equity[t-1] + net_income - dividends`) cannot yet be expressed as framework data.
+- Guidance must be transcribed by hand from a registered document, because PDF extraction is not implemented. The
+  document id makes the citation checkable; it does not make the number automatic.
 
 ## Disclaimer
 

@@ -5,8 +5,9 @@ from .document import ALLOWED_TRANSITIONS, DocumentRecord, DocumentStatus, Docum
 from .financial import (
     ExtractionMethod, FinancialFact, FiscalPeriodCode, Period, PeriodType, Provenance, SourceLocation, make_fact_id,
 )
+from .forecast import BASE_SCENARIO, ForecastValue, ScenarioSpec, make_forecast_id
 from .framework import (
-    METHOD_FAMILY, ClassificationRule, DriverSpec, IndustryFramework, MetricSpec, ValuationFamily, ValuationMethod,
+    METHOD_FAMILY, AnalyticSpec, ClassificationRule, DriverSpec, IndustryFramework, MetricSpec, ValuationFamily, ValuationMethod,
     ValuationPolicy,
 )
 

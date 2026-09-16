@@ -1,0 +1,102 @@
+# EXAMPLE ONLY. Copy to `assumptions.yaml` in this directory to make it live.
+#
+# Every value below is illustrative and is NOT a claim about this company. Nothing in this file
+# is used until you rename it, and the engine forecasts on seeded history alone until then.
+#
+# What the engine supplies for you
+# --------------------------------
+# The engine seeds one `historical` assumption for every exogenous input the driver graph needs,
+# computed from the facts Phase 3 verified and the analytics Phase 4 produced, carrying the fact
+# ids it used. Run `make forecast` once with no file here and read `output/assumptions.json`:
+# the `projection_plan` block lists every assumption key the framework asks for, and `unseeded`
+# lists the ones history could not support. Those keys are what you override here.
+#
+# Key shapes:
+#   growth.<metric>    a year-on-year growth rate for a metric the framework trends
+#   level.<metric>     the level itself, for ratio-valued metrics (margins, capital ratios)
+#   rate.<analytic>    a forward value for an analytic a driver formula models with
+#
+# Resolution order, highest first:
+#   scenario > analyst_assumption > management_guidance > consensus > historical
+# The analyst outranks management deliberately: deciding whether to believe guidance is the job.
+# Within one rung, an assumption pinned to a fiscal year beats one that applies to every year.
+
+schema_version: "1"
+
+scenarios:
+  - id: bull
+    name: Bull case
+    description: Example scenario. Describe the world in which these assumptions hold.
+  - id: bear
+    name: Bear case
+    description: Example scenario. Describe what has to go wrong, specifically.
+
+assumptions:
+
+  # --- Management guidance -------------------------------------------------------------------
+  #
+  # `management_guidance` and `consensus` CANNOT be written without `source_document_id`; the
+  # Assumption schema rejects them. The id must be a document already in this company's registry,
+  # so guidance always points at something retrieved, hashed and versioned rather than at a memory
+  # of a headline.
+  #
+  # To cite guidance:
+  #   1. Add the document to `config.yaml` under `sources.earnings_presentations` (or
+  #      `annual_reports`) with its URL.
+  #   2. Run `make ingest`. The document is downloaded, hashed and registered.
+  #   3. Read its `doc_...` id out of `output/sources.md`.
+  #   4. Paste that id below, with the page the figure appears on in the description.
+  #
+  # Uncomment and fill in once you have a real document id. The example id below is not real.
+  #
+  # - id: level.net_interest_margin
+  #   description: "NII ex-Markets outlook, 4Q earnings presentation, guidance page"
+  #   value: 0.0000            # read the figure off the cited page; do not infer it
+  #   unit: ratio
+  #   type: management_guidance
+  #   source_document_id: doc_0000000000000000
+  #   period: FY2026
+
+  # --- Analyst assumptions -------------------------------------------------------------------
+  #
+  # These require a written rationale. The schema enforces it: an assumption without a reason is
+  # a number nobody can argue with, which is the opposite of research.
+
+  - id: growth.loans
+    description: Illustrative loan growth assumption
+    value: 0.03
+    unit: ratio
+    type: analyst_assumption
+    rationale: >
+      EXAMPLE VALUE. Replace with your own view and say why: what does this imply about share,
+      pricing and the credit cycle, and what would make you wrong?
+
+  # An assumption may be declared with no value. The engine then refuses to project anything
+  # downstream of it and says so, rather than silently falling back to history.
+  #
+  # - id: rate.credit_loss_rate
+  #   description: Through-cycle provision rate — not yet decided
+  #   unit: ratio
+  #   type: analyst_assumption
+  #   rationale: Pending a review of the last two credit cycles rather than the trailing three years.
+
+  # --- Scenario overrides --------------------------------------------------------------------
+  #
+  # Only `scenario` assumptions may bind to a scenario, and the scenario must be declared above.
+  # Anything not overridden falls through to the base case, so a scenario states only what differs.
+
+  - id: growth.loans
+    description: Loan growth, bull case
+    value: 0.07
+    unit: ratio
+    type: scenario
+    scenario: bull
+    rationale: EXAMPLE VALUE. State the conditions under which this is the right number.
+
+  - id: growth.loans
+    description: Loan growth, bear case
+    value: -0.01
+    unit: ratio
+    type: scenario
+    scenario: bear
+    rationale: EXAMPLE VALUE. State what has to happen for balances to shrink.

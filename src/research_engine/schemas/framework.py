@@ -258,6 +258,10 @@ class IndustryFramework(StrictModel):
     charts: tuple[ChartSpec, ...] = ()
     remove_charts: tuple[str, ...] = ()
     valuation: ValuationPolicy = Field(default_factory=ValuationPolicy)
+    # Metrics the forecast must produce even when no driver names them (net income, equity, ...).
+    # The driver graph expands these transitively through formulas and derivations.
+    forecast_targets: tuple[str, ...] = ()
+    remove_forecast_targets: tuple[str, ...] = ()
     report_sections: tuple[str, ...] = ()
 
     @field_validator("report_sections")
@@ -350,6 +354,11 @@ class IndustryFramework(StrictModel):
             unknown = set(c.series) - series_ids
             if unknown:
                 raise ValueError(f"chart {c.id!r} references unknown series {sorted(unknown)}")
+        unknown = set(self.forecast_targets) - known
+        if unknown:
+            raise ValueError(f"forecast_targets reference unknown metrics {sorted(unknown)}")
+        if len(set(self.forecast_targets)) != len(self.forecast_targets):
+            raise ValueError("duplicate forecast_targets")
         for d in self.drivers:
             unknown = set(d.affects) - known
             if unknown:

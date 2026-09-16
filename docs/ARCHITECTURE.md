@@ -23,7 +23,8 @@ flowchart TD
     F -. lineage .-> O
 ```
 
-Phases 1–4 implement A–D, E1, F, G, SIC-based H, I (historical analysis), the schemas for K, and lineage through charts.
+Phases 1–5 implement A–D, E1, F, G, SIC-based H, I (historical analysis), J (driver-graph forecast with an assumption
+registry and scenarios), the schemas for K, and lineage from a projected figure through its assumption to a source URL.
 
 ## Package map
 
@@ -41,9 +42,10 @@ src/research_engine/
   calendar.py   fiscal calendar (dates -> fiscal periods)
   quality/      derived facts, identity and continuity checks, HTML report
   analysis/     historical analytics, summaries, charts, Markdown tables
+  forecast/     driver graph, assumption registry, scenario projection, Markdown tables
   classification.py  framework selection (override > SIC > generic)
   expressions.py  whitelisted-AST arithmetic for derivations and driver formulas
-  cli.py        validate | frameworks | research
+  cli.py        validate | frameworks | ingest | quality | analyze | forecast | research
 industry_frameworks/   metrics, drivers, valuation policy per industry (data)
 companies/             one directory per company (data)
 ```
@@ -81,6 +83,10 @@ companies/             one directory per company (data)
 | D24 | Error-severity data-quality issues block their facts; warnings propagate as flags to every dependent value and chart point | Analysis should never silently rest on data that failed a hard check | Flags accumulate through chained analytics |
 | D25 | Stages verify framework and upstream manifest hashes before running | A framework edited after ingestion would silently change mappings | Any framework edit requires re-running `ingest` |
 | D26 | Charts are framework data; derived points are hollow/hatched, flagged points carry † | The chart itself discloses provenance, not only the appendix | Fixed visual grammar across industries |
+| D27 | A metric consumed by a driver formula is exogenous when using its derivation would close a cycle | Historical derivations and forecast drivers legitimately run in opposite directions (a bank's NIM is measured from NII, then drives it) | One metric per cycle becomes an assumption; the demotion is recorded and reported, never silent |
+| D28 | Assumption precedence is scenario > analyst > management guidance > consensus > seeded history | A model that cannot disagree with the company cannot produce a variant perception | Guidance is an input to judgement, not an override of it |
+| D29 | The engine seeds `historical` assumptions; the analyst file may not declare them | Only the engine can cite the fact ids that make them checkable | Analysts override at a higher rung instead of editing history |
+| D30 | An unset or unresolvable assumption refuses to project, and the reason is counted per metric-year | A forecast that invents a number it could not compute cannot be reviewed | Sparse history yields visibly incomplete forecasts |
 
 ## Invariants tested
 
@@ -95,3 +101,7 @@ companies/             one directory per company (data)
 - Loosening the tolerance, skipping derived facts in sign checks, or disabling the consistency check each fails tests (verified by mutation).
 - A chart traces chart → analytic value → fact → document → source URL.
 - Replacing the average basis with closing balances, disabling the quality gate, allowing negative denominators, or allowing flow-to-balance derivations each fails tests (verified by mutation).
+- Every forecast metric is evaluated after the metrics it depends on; a derivation/driver cycle is demoted, and an unbreakable one raises.
+- Management guidance and consensus cannot exist without a cited document, and the analyst file cannot declare seeded history.
+- A projected figure traces to the assumption behind it and on to a source URL.
+- An assumption declared without a value stops its dependants rather than falling back to history.
