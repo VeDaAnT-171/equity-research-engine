@@ -23,7 +23,7 @@ flowchart TD
     F -. lineage .-> O
 ```
 
-Phases 1–2 implement A–D, E1, F, SIC-based H, the schemas for K, and the lineage graph used by O.
+Phases 1–3 implement A–D, E1, F, G, SIC-based H, the schemas for K, and the lineage graph used by O.
 
 ## Package map
 
@@ -39,6 +39,7 @@ src/research_engine/
   extraction/   XBRL observations -> canonical facts
   pipeline/     ingestion orchestration and output writers
   calendar.py   fiscal calendar (dates -> fiscal periods)
+  quality/      derived facts, identity and continuity checks, HTML report
   classification.py  framework selection (override > SIC > generic)
   expressions.py  whitelisted-AST arithmetic for derivations and driver formulas
   cli.py        validate | frameworks | research
@@ -67,6 +68,12 @@ companies/             one directory per company (data)
 | D14 | Per period, the highest-ranked concept wins; lower-ranked ones are recorded as shadowed | Mixing `Revenues` and contract-revenue tags silently changes definitions | Concept switches across years are flagged, not reconciled |
 | D15 | Identity (CIK in URL, ticker, fiscal year end) is verified before facts are trusted | Wrong-company data is the most damaging silent failure | A ticker change requires a config update |
 
+| D16 | Accounting identities are framework data (`checks:`), limited to + and − | Banks, insurers and industrials need different identities; additive form is what makes a principled rounding tolerance possible | Ratio sanity checks need a different mechanism |
+| D17 | Tolerance = n × inferred presentation unit / 2, unit capped at 10^6 | Derives the threshold from how filers round, rather than a tuned percentage | Unit is inferred, not read from XBRL `decimals` (absent in companyfacts) |
+| D18 | Missing inputs are counted as "not evaluable" | A check with no data must not look like a pass | Reports show three numbers per check instead of one |
+| D19 | Derived facts never replace reported ones; where both exist and the definition is additive, they are compared | Keeps reported data authoritative while surfacing definition differences | Filer-specific definitions show up as warnings to triage |
+| D20 | Outlier and scale rules are statistical conventions with stated parameters (modified z > 3.5; 10^3k ± 0.2 log10) | Spec forbids arbitrary thresholds; these are traceable and adjustable in one place | Flags are prompts for review, not conclusions |
+
 ## Invariants tested
 
 - No configured company identifier appears in `src/` or `industry_frameworks/`.
@@ -76,3 +83,5 @@ companies/             one directory per company (data)
 - Restated values are never overwritten; comparatives never duplicate facts.
 - Every skipped XBRL observation is counted under a reason.
 - Wrong CIK fails before any network call; wrong ticker fails before extraction.
+- A derived quarter traces through its inputs to source URLs.
+- Loosening the tolerance, skipping derived facts in sign checks, or disabling the consistency check each fails tests (verified by mutation).

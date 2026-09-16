@@ -84,7 +84,9 @@ class FiscalCalendar:
             else:
                 return Classification(None, "half_year_not_aligned_to_fiscal_halves")
         elif NINE_MONTH_DAYS[0] <= days <= NINE_MONTH_DAYS[1]:
-            return Classification(None, "nine_month_year_to_date")
+            if quarter != 3:
+                return Classification(None, "nine_month_not_ending_at_fiscal_q3")
+            code = FiscalPeriodCode.M9
         else:
             return Classification(None, "unsupported_duration")
         return Classification(Period(period_type=PeriodType.DURATION, start=start, end=end, fiscal_year=fy, fiscal_period=code))

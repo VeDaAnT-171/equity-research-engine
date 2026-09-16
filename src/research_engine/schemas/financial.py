@@ -30,6 +30,7 @@ class FiscalPeriodCode(str, Enum):
     Q4 = "Q4"
     H1 = "H1"
     H2 = "H2"
+    M9 = "9M"  # nine-month year-to-date (10-Q cash flow statements report cumulative periods)
 
 
 class Period(StrictModel):

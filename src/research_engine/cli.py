@@ -13,6 +13,7 @@ from .ingestion import HttpFetcher, load_env_file
 from .ingestion.http import require_contact_user_agent
 from .pipeline import run_ingestion
 from .pipeline.ingest import requires_sec_access
+from .pipeline.quality import run_quality_stage
 from .versioning import version_stamp
 
 
@@ -110,9 +111,28 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     return 3 if result.failures else 0
 
 
+def _cmd_quality(args: argparse.Namespace) -> int:
+    try:
+        config = load_project_config(args.config)
+        registry = FrameworkRegistry(args.frameworks)
+        workspace = args.workspace or args.config.resolve().parent
+        result = run_quality_stage(config, workspace=workspace, frameworks=registry)
+    except ResearchEngineError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    counts = result.report.counts()
+    print(f"data quality for {config.company_id} -> {result.output_dir / 'data_quality_report.html'}")
+    print(f"  facts:   {len(result.current)} current reported, {len(result.derived)} derived")
+    print(f"  issues:  {counts['error']} errors, {counts['warning']} warnings, {counts['info']} info")
+    for c in sorted(result.report.checks.values(), key=lambda c: c.check):
+        if c.failed:
+            print(f"  failed:  {c.check} ({c.failed} of {c.passed + c.failed} evaluable; {c.not_evaluable} not evaluable)")
+    return 4 if args.strict and counts["error"] else 0
+
+
 def _cmd_research(args: argparse.Namespace) -> int:
     print(
-        "error: the full research pipeline is not implemented yet. Implemented stages: `validate`, `ingest`.",
+        "error: the full research pipeline is not implemented yet. Implemented stages: `validate`, `ingest`, `quality`.",
         file=sys.stderr,
     )
     return 2
@@ -140,6 +160,13 @@ def main(argv: list[str] | None = None) -> int:
     p_ingest.add_argument("--offline", action="store_true", help="use cached documents only")
     p_ingest.add_argument("--env-file", type=Path, default=Path(".env"))
     p_ingest.set_defaults(func=_cmd_ingest)
+
+    p_quality = sub.add_parser("quality", help="derive interim/framework metrics and run data-quality checks")
+    p_quality.add_argument("--config", required=True, type=Path)
+    p_quality.add_argument("--frameworks", type=Path, default=_default_frameworks())
+    p_quality.add_argument("--workspace", type=Path, default=None, help="defaults to the config file's directory")
+    p_quality.add_argument("--strict", action="store_true", help="exit with status 4 if any error-severity issue is found")
+    p_quality.set_defaults(func=_cmd_quality)
 
     p_research = sub.add_parser("research", help="run the full pipeline (not yet implemented)")
     p_research.add_argument("--config", required=True, type=Path)

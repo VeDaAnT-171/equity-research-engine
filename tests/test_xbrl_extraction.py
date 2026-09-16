@@ -52,7 +52,7 @@ def test_every_fact_is_reported_with_filing_lineage(observations):
 
 def test_skip_reasons_are_counted_not_silent(observations):
     _, report = run(observations, "banks")
-    for reason in ("nine_month_year_to_date", "form_not_accepted:8-K", "period_end_not_fiscal_quarter_end",
+    for reason in ("form_not_accepted:8-K", "period_end_not_fiscal_quarter_end",
                    "unit_incompatible:deposits:shares", "unmapped_concept"):
         assert report.skipped[reason] >= 1, reason
     assert report.observations_total == sum(report.skipped.values()) + report.observations_mapped
@@ -60,7 +60,7 @@ def test_skip_reasons_are_counted_not_silent(observations):
 
 def test_periods_and_units(observations):
     facts, _ = run(observations, "banks")
-    assert by(facts, "revenue", "Q1-2025") and by(facts, "revenue", "H1-2025")
+    assert by(facts, "revenue", "Q1-2025") and by(facts, "revenue", "H1-2025") and by(facts, "revenue", "9M-2025")
     [eps] = by(facts, "diluted_eps", "FY2025")
     assert eps.unit == "USD/share" and eps.currency == "USD"
     [assets_q1] = by(facts, "total_assets", "Q1-2025")

@@ -30,6 +30,7 @@ metrics:
     unit_kind: currency
     statement: income_statement
     period_type: duration
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:Revenues]
     derivation: net_interest_income + noninterest_income
   - id: noninterest_expense
@@ -37,6 +38,7 @@ metrics:
     unit_kind: currency
     statement: income_statement
     period_type: duration
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:NoninterestExpense]
   - id: provision_for_credit_losses
     name: Provision for credit losses
@@ -61,12 +63,14 @@ metrics:
     unit_kind: currency
     statement: balance_sheet
     period_type: instant
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:LoansAndLeasesReceivableNetReportedAmount]
   - id: deposits
     name: Deposits
     unit_kind: currency
     statement: balance_sheet
     period_type: instant
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:Deposits]
   - id: average_interest_earning_assets
     name: Average interest-earning assets
@@ -91,6 +95,7 @@ metrics:
     unit_kind: currency
     statement: regulatory
     period_type: instant
+    expected_sign: non_negative
     extraction_hint: Regulatory capital section; same approach as CET1.
   - id: net_interest_margin
     name: Net interest margin

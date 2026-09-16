@@ -7,6 +7,7 @@ import hashlib
 import json
 from collections import defaultdict
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,7 +21,8 @@ from ..versioning import version_stamp
 if TYPE_CHECKING:
     from .ingest import IngestionResult
 
-_INTERIM = {FiscalPeriodCode.Q1, FiscalPeriodCode.Q2, FiscalPeriodCode.Q3, FiscalPeriodCode.Q4, FiscalPeriodCode.H1, FiscalPeriodCode.H2}
+PERIOD_ORDER = {"Q1": 1, "H1": 2, "Q2": 3, "9M": 4, "Q3": 5, "H2": 6, "Q4": 7, "FY": 8}
+_INTERIM = {FiscalPeriodCode.M9, FiscalPeriodCode.Q1, FiscalPeriodCode.Q2, FiscalPeriodCode.Q3, FiscalPeriodCode.Q4, FiscalPeriodCode.H1, FiscalPeriodCode.H2}
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -39,14 +41,25 @@ def _csv_text(header: list[str], rows: list[list]) -> str:
     return buf.getvalue()
 
 
+RATIO_DISPLAY_PLACES = 10
+
+
+def display_value(fact) -> str:
+    """CSV display only: ratios computed in Decimal carry 28 digits of meaningless precision."""
+    if fact.unit == "pure" and fact.provenance.value == "derived":
+        return format(fact.value.quantize(Decimal(1).scaleb(-RATIO_DISPLAY_PLACES)).normalize(), "f")
+    return str(fact.value)
+
+
 def _wide(facts, codes) -> str:
     selected = [f for f in facts if f.period.fiscal_period in codes]
-    periods = sorted({(f.period.fiscal_year, f.period.fiscal_period.value) for f in selected})
+    periods = sorted({(f.period.fiscal_year, f.period.fiscal_period.value) for f in selected},
+                     key=lambda p: (p[0], PERIOD_ORDER[p[1]]))
     labels = [f"FY{y}" if c == "FY" else f"{c}-{y}" for y, c in periods]
     table: dict[str, dict[str, str]] = defaultdict(dict)
     units: dict[str, str] = {}
     for f in selected:
-        table[f.metric_id][f.period.label] = str(f.value)
+        table[f.metric_id][f.period.label] = display_value(f)
         units[f.metric_id] = f.unit
     rows = [[m, units[m]] + [table[m].get(label, "") for label in labels] for m in sorted(table)]
     return _csv_text(["metric_id", "unit"] + labels, rows)

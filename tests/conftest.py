@@ -12,7 +12,7 @@ def root() -> Path:
     return ROOT
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def frameworks_dir() -> Path:
     return FRAMEWORKS
 

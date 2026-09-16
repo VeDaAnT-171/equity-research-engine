@@ -7,7 +7,7 @@ METRIC_ID_PATTERN = r"^[a-z][a-z0-9_]*$"
 CURRENCY_PATTERN = r"^[A-Z]{3}$"
 DOCUMENT_ID_PATTERN = r"^doc_[0-9a-f]{16}$"
 FACT_ID_PATTERN = r"^fact_[0-9a-f]{16}$"
-FISCAL_PERIOD_LABEL_PATTERN = r"^(FY\d{4}|(Q[1-4]|H[12])-\d{4})$"
+FISCAL_PERIOD_LABEL_PATTERN = r"^(FY\d{4}|(Q[1-4]|H[12]|9M)-\d{4})$"
 XBRL_CONCEPT_PATTERN = r"^[A-Za-z][\w-]*:[A-Za-z]\w*$"
 
 _NON_SLUG = re.compile(r"[^a-z0-9]+")

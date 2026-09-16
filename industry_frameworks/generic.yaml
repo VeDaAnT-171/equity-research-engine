@@ -11,12 +11,14 @@ metrics:
     unit_kind: currency
     statement: income_statement
     period_type: duration
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:Revenues, us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax, ifrs-full:Revenue]
   - id: cost_of_revenue
     name: Cost of revenue
     unit_kind: currency
     statement: income_statement
     period_type: duration
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:CostOfRevenue, us-gaap:CostOfGoodsAndServicesSold, ifrs-full:CostOfSales]
   - id: gross_profit
     name: Gross profit
@@ -49,6 +51,7 @@ metrics:
     unit_kind: count
     statement: income_statement
     period_type: duration
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding]
   - id: operating_cash_flow
     name: Cash flow from operations
@@ -56,12 +59,45 @@ metrics:
     statement: cash_flow
     period_type: duration
     xbrl_concepts: [us-gaap:NetCashProvidedByUsedInOperatingActivities, ifrs-full:CashFlowsFromUsedInOperatingActivities]
+  - id: investing_cash_flow
+    name: Cash flow from investing
+    unit_kind: currency
+    statement: cash_flow
+    period_type: duration
+    xbrl_concepts: [us-gaap:NetCashProvidedByUsedInInvestingActivities, ifrs-full:CashFlowsFromUsedInInvestingActivities]
+  - id: financing_cash_flow
+    name: Cash flow from financing
+    unit_kind: currency
+    statement: cash_flow
+    period_type: duration
+    xbrl_concepts: [us-gaap:NetCashProvidedByUsedInFinancingActivities, ifrs-full:CashFlowsFromUsedInFinancingActivities]
+  - id: fx_effect_on_cash
+    name: Effect of exchange rates on cash
+    unit_kind: currency
+    statement: cash_flow
+    period_type: duration
+    xbrl_concepts: [us-gaap:EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents, ifrs-full:EffectOfExchangeRateChangesOnCashAndCashEquivalents]
+  - id: net_change_in_cash
+    name: Net change in cash (incl. restricted cash)
+    unit_kind: currency
+    statement: cash_flow
+    period_type: duration
+    xbrl_concepts: [us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect, ifrs-full:IncreaseDecreaseInCashAndCashEquivalents]
+  - id: cash_and_restricted_cash
+    name: Cash, equivalents and restricted cash
+    description: The balance the cash flow statement reconciles to under ASC 230 (post ASU 2016-18).
+    unit_kind: currency
+    statement: balance_sheet
+    period_type: instant
+    expected_sign: non_negative
+    xbrl_concepts: [us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents, ifrs-full:CashAndCashEquivalents]
   - id: capital_expenditure
     name: Capital expenditure
     description: Reported as a positive payment amount.
     unit_kind: currency
     statement: cash_flow
     period_type: duration
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:PaymentsToAcquirePropertyPlantAndEquipment, ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities]
   - id: free_cash_flow
     name: Free cash flow
@@ -74,12 +110,14 @@ metrics:
     unit_kind: currency
     statement: balance_sheet
     period_type: instant
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:Assets, ifrs-full:Assets]
   - id: total_liabilities
     name: Total liabilities
     unit_kind: currency
     statement: balance_sheet
     period_type: instant
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:Liabilities, ifrs-full:Liabilities]
   - id: total_equity
     name: Total equity
@@ -92,12 +130,14 @@ metrics:
     unit_kind: currency
     statement: balance_sheet
     period_type: instant
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:CashAndCashEquivalentsAtCarryingValue, ifrs-full:CashAndCashEquivalents]
   - id: total_debt
     name: Total debt
     unit_kind: currency
     statement: balance_sheet
     period_type: instant
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:LongTermDebt]
     extraction_hint: Sum of current and non-current borrowings; tag coverage varies widely by filer.
   - id: gross_margin
@@ -118,6 +158,29 @@ metrics:
     statement: income_statement
     period_type: duration
     derivation: net_income / total_equity
+
+# Accounting identities checked in the data-quality stage. Additive only: tolerances are derived from the
+# reporting precision of the terms, which is defined for sums but not for ratios.
+checks:
+  - id: balance_sheet_identity
+    description: Total assets equal total liabilities plus total equity.
+    left: total_assets
+    right: total_liabilities + total_equity
+    severity: warning
+    explanation_if_failed: >-
+      Often legitimate: StockholdersEquity excludes non-controlling interests and temporary (mezzanine) equity,
+      which some filers tag separately. Confirm against the balance sheet before treating as an extraction error.
+  - id: cash_flow_statement_sum
+    description: Operating, investing and financing cash flows plus FX effect equal the net change in cash.
+    left: operating_cash_flow + investing_cash_flow + financing_cash_flow + fx_effect_on_cash
+    right: net_change_in_cash
+    optional_terms: [fx_effect_on_cash]
+    severity: error
+  - id: cash_roll_forward
+    description: Opening cash plus the net change in cash equals closing cash.
+    left: cash_and_restricted_cash__opening + net_change_in_cash
+    right: cash_and_restricted_cash
+    severity: error
 
 drivers:
   - id: revenue_trajectory

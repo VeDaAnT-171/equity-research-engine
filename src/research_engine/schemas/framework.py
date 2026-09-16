@@ -8,7 +8,7 @@ from typing import Iterable, Literal, Optional
 
 from pydantic import Field, field_validator, model_validator
 
-from ..expressions import referenced_names
+from ..expressions import is_additive, referenced_names
 from .common import METRIC_ID_PATTERN, SLUG_PATTERN, XBRL_CONCEPT_PATTERN, StrictModel
 from .financial import PeriodType
 
@@ -61,6 +61,16 @@ class MetricSpec(StrictModel):
     derivation: Optional[str] = None
     # For KPIs with no standard tag (company-defined operating metrics).
     extraction_hint: Optional[str] = None
+    # Data-quality metadata. Levels like assets or revenue cannot be negative; flows like cash change can.
+    expected_sign: Literal["non_negative", "any"] = "any"
+    # Whether sub-period values sum to the full period (enables Q4 = FY - 9M). Default: currency flows.
+    additive: Optional[bool] = None
+
+    @property
+    def is_additive(self) -> bool:
+        if self.additive is not None:
+            return self.additive
+        return self.unit_kind == "currency" and self.period_type is PeriodType.DURATION
 
     @field_validator("xbrl_concepts")
     @classmethod
@@ -92,6 +102,38 @@ class DriverSpec(StrictModel):
         if v is not None:
             referenced_names(v)
         return v
+
+
+OPENING_SUFFIX = "__opening"  # `cash__opening` = instant value at the start of a duration period
+
+
+class IdentityCheck(StrictModel):
+    id: str = Field(pattern=METRIC_ID_PATTERN)
+    description: str = Field(min_length=1)
+    left: str
+    right: str
+    optional_terms: tuple[str, ...] = ()  # treated as zero when not reported (e.g. FX effect on cash)
+    severity: Literal["error", "warning"] = "error"
+    explanation_if_failed: str = ""
+
+    @model_validator(mode="after")
+    def _additive(self) -> "IdentityCheck":
+        for side in (self.left, self.right):
+            if not is_additive(side):
+                raise ValueError(f"identity check {self.id!r}: only + and - are allowed ({side!r}); "
+                                 "rounding tolerances are defined for sums, not products or ratios")
+        unknown = set(self.optional_terms) - self.names
+        if unknown:
+            raise ValueError(f"identity check {self.id!r}: optional terms not used in the check: {sorted(unknown)}")
+        return self
+
+    @property
+    def names(self) -> frozenset[str]:
+        return referenced_names(self.left) | referenced_names(self.right)
+
+    @staticmethod
+    def base_metric(name: str) -> str:
+        return name[: -len(OPENING_SUFFIX)] if name.endswith(OPENING_SUFFIX) else name
 
 
 class ValuationPolicy(StrictModel):
@@ -139,6 +181,8 @@ class IndustryFramework(StrictModel):
     remove_metrics: tuple[str, ...] = ()  # drop inherited metrics that don't apply (e.g. COGS for banks)
     drivers: tuple[DriverSpec, ...] = ()
     remove_drivers: tuple[str, ...] = ()
+    checks: tuple[IdentityCheck, ...] = ()
+    remove_checks: tuple[str, ...] = ()
     valuation: ValuationPolicy = Field(default_factory=ValuationPolicy)
     report_sections: tuple[str, ...] = ()
 
@@ -170,6 +214,12 @@ class IndustryFramework(StrictModel):
             dupes = {i for i in ids if ids.count(i) > 1}
             if dupes:
                 raise ValueError(f"duplicate {label} ids: {sorted(dupes)}")
+        double = [i for i in metric_ids if "__" in i]
+        if double:
+            raise ValueError(f"metric ids may not contain '__' (reserved for {OPENING_SUFFIX}): {double}")
+        check_ids = [c.id for c in self.checks]
+        if len(set(check_ids)) != len(check_ids):
+            raise ValueError("duplicate identity check ids")
         clash = set(metric_ids) & set(driver_ids)
         if clash:
             raise ValueError(f"ids used as both metric and driver: {sorted(clash)}")
@@ -191,6 +241,13 @@ class IndustryFramework(StrictModel):
                 unknown = referenced_names(d.formula) - known
                 if unknown:
                     raise ValueError(f"driver {d.id!r} formula references unknown metrics {sorted(unknown)}")
+        for check in self.checks:
+            for name in check.names:
+                base = IdentityCheck.base_metric(name)
+                if base not in known:
+                    raise ValueError(f"identity check {check.id!r} references unknown metric {base!r}")
+                if name != base and self.metric(base).period_type is not PeriodType.INSTANT:
+                    raise ValueError(f"identity check {check.id!r}: {OPENING_SUFFIX} applies only to instant metrics ({base})")
         if not self.valuation.preferred:
             raise ValueError("framework resolves to no preferred valuation methods")
 

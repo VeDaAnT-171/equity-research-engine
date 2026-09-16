@@ -115,3 +115,39 @@ def test_preferred_and_excluded_conflict(scratch):
 def test_unknown_framework_lists_available(frameworks_dir):
     with pytest.raises(FrameworkError, match="available: banks"):
         FrameworkRegistry(frameworks_dir).get("crypto")
+
+
+def test_identity_checks_validated(scratch):
+    add(scratch, "ratio_check", """
+        name: ratio_check
+        display_name: Bad
+        extends: generic
+        checks:
+          - {id: bad, description: ratios are not identities, left: revenue / total_assets, right: revenue}
+    """)
+    with pytest.raises(FrameworkError, match="only \\+ and - are allowed"):
+        FrameworkRegistry(scratch)
+
+
+def test_identity_check_references(scratch):
+    add(scratch, "bad", """
+        name: bad
+        display_name: Bad
+        extends: generic
+        checks:
+          - {id: opening_flow, description: x, left: revenue__opening, right: revenue}
+    """)
+    with pytest.raises(FrameworkError, match="applies only to instant metrics"):
+        FrameworkRegistry(scratch).get("bad")
+
+
+def test_checks_inherit_and_can_be_removed(scratch, frameworks_dir):
+    add(scratch, "child", """
+        name: child
+        display_name: Child
+        extends: generic
+        remove_checks: [balance_sheet_identity]
+    """)
+    reg = FrameworkRegistry(scratch)
+    assert {c.id for c in reg.get("child").checks} == {"cash_flow_statement_sum", "cash_roll_forward"}
+    assert {c.id for c in FrameworkRegistry(frameworks_dir).get("banks").checks} >= {"balance_sheet_identity"}

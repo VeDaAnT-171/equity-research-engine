@@ -19,8 +19,10 @@ def _merge_by_id(parent_items, child_items, removed):
 
 
 def _merge(parent: IndustryFramework, child: IndustryFramework) -> IndustryFramework:
-    unknown_removals = (set(child.remove_metrics) - parent.metric_ids) | (
-        set(child.remove_drivers) - {d.id for d in parent.drivers}
+    unknown_removals = (
+        (set(child.remove_metrics) - parent.metric_ids)
+        | (set(child.remove_drivers) - {d.id for d in parent.drivers})
+        | (set(child.remove_checks) - {c.id for c in parent.checks})
     )
     if unknown_removals:
         raise FrameworkError(f"{child.name}: cannot remove items not defined by parent: {sorted(unknown_removals)}")
@@ -38,6 +40,7 @@ def _merge(parent: IndustryFramework, child: IndustryFramework) -> IndustryFrame
         classification=child.classification,  # classification is never inherited
         metrics=_merge_by_id(parent.metrics, child.metrics, set(child.remove_metrics)),
         drivers=_merge_by_id(parent.drivers, child.drivers, set(child.remove_drivers)),
+        checks=_merge_by_id(parent.checks, child.checks, set(child.remove_checks)),
         valuation=ValuationPolicy(preferred=preferred, excluded=excluded),
         report_sections=child.report_sections or parent.report_sections,
     )
@@ -89,7 +92,7 @@ class FrameworkRegistry:
             chain.append(current)
             current = self._raw[current].extends
         resolved = self._raw[chain[-1]]
-        if resolved.remove_metrics or resolved.remove_drivers:
+        if resolved.remove_metrics or resolved.remove_drivers or resolved.remove_checks:
             raise FrameworkError(f"{resolved.name}: a root framework cannot remove inherited items")
         for child in reversed(chain[:-1]):
             try:

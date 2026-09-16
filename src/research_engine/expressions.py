@@ -43,6 +43,16 @@ def _parse(expr: str) -> ast.Expression:
     return tree
 
 
+def is_additive(expr: str) -> bool:
+    """True if the expression only adds/subtracts identifiers (the form accounting identities take)."""
+    for node in ast.walk(_parse(expr)):
+        if isinstance(node, ast.BinOp) and not isinstance(node.op, (ast.Add, ast.Sub)):
+            return False
+        if isinstance(node, ast.Constant):
+            return False
+    return True
+
+
 def referenced_names(expr: str) -> frozenset[str]:
     return frozenset(n.id for n in ast.walk(_parse(expr)) if isinstance(n, ast.Name))
 

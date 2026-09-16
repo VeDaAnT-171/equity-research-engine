@@ -12,6 +12,7 @@ metrics:
     unit_kind: currency
     statement: operating
     period_type: instant
+    expected_sign: non_negative
     xbrl_concepts: [us-gaap:RevenueRemainingPerformanceObligation]
   - id: stock_based_compensation
     name: Stock-based compensation
@@ -24,12 +25,14 @@ metrics:
     unit_kind: currency
     statement: operating
     period_type: instant
+    expected_sign: non_negative
     extraction_hint: Company-defined KPI; record the company's own definition alongside the value.
   - id: customers
     name: Customers
     unit_kind: count
     statement: operating
     period_type: instant
+    expected_sign: non_negative
     extraction_hint: Company-defined customer count; thresholds (e.g. >$100k) differ by company.
   - id: net_revenue_retention
     name: Net revenue retention
@@ -43,6 +46,7 @@ metrics:
     statement: operating
     period_type: duration
     derivation: revenue / customers
+    additive: false
   - id: fcf_margin
     name: Free cash flow margin
     unit_kind: ratio

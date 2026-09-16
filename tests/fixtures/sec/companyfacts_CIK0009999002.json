@@ -337,6 +337,179 @@
       }
      ]
     }
+   },
+   "Liabilities": {
+    "label": "Liabilities",
+    "units": {
+     "USD": [
+      {
+       "end": "2024-12-31",
+       "val": 2720000000000,
+       "accn": "0009999002-25-000010",
+       "fy": 2025,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2025-02-18"
+      },
+      {
+       "end": "2025-12-31",
+       "val": 2900000000000,
+       "accn": "0009999002-26-000010",
+       "fy": 2026,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-02-17"
+      }
+     ]
+    }
+   },
+   "StockholdersEquity": {
+    "label": "Equity",
+    "units": {
+     "USD": [
+      {
+       "end": "2024-12-31",
+       "val": 280000000000,
+       "accn": "0009999002-25-000010",
+       "fy": 2025,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2025-02-18"
+      },
+      {
+       "end": "2025-12-31",
+       "val": 295000000000,
+       "accn": "0009999002-26-000010",
+       "fy": 2026,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-02-17"
+      }
+     ]
+    }
+   },
+   "NetCashProvidedByUsedInOperatingActivities": {
+    "label": "CFO",
+    "units": {
+     "USD": [
+      {
+       "end": "2025-03-31",
+       "val": 8000000000,
+       "accn": "0009999002-25-000020",
+       "fy": 2025,
+       "fp": "Q",
+       "form": "10-Q",
+       "filed": "2025-05-01",
+       "start": "2025-01-01"
+      },
+      {
+       "end": "2025-06-30",
+       "val": 18000000000,
+       "accn": "0009999002-25-000030",
+       "fy": 2025,
+       "fp": "Q",
+       "form": "10-Q",
+       "filed": "2025-08-01",
+       "start": "2025-01-01"
+      },
+      {
+       "end": "2025-09-30",
+       "val": 29000000000,
+       "accn": "0009999002-25-000040",
+       "fy": 2025,
+       "fp": "Q",
+       "form": "10-Q",
+       "filed": "2025-11-01",
+       "start": "2025-01-01"
+      },
+      {
+       "end": "2025-12-31",
+       "val": 40000000000,
+       "accn": "0009999002-26-000010",
+       "fy": 2026,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-02-17",
+       "start": "2025-01-01"
+      }
+     ]
+    }
+   },
+   "NetCashProvidedByUsedInInvestingActivities": {
+    "label": "CFI",
+    "units": {
+     "USD": [
+      {
+       "end": "2025-12-31",
+       "val": -25000000000,
+       "accn": "0009999002-26-000010",
+       "fy": 2026,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-02-17",
+       "start": "2025-01-01"
+      }
+     ]
+    }
+   },
+   "NetCashProvidedByUsedInFinancingActivities": {
+    "label": "CFF",
+    "units": {
+     "USD": [
+      {
+       "end": "2025-12-31",
+       "val": -10000000000,
+       "accn": "0009999002-26-000010",
+       "fy": 2026,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-02-17",
+       "start": "2025-01-01"
+      }
+     ]
+    }
+   },
+   "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect": {
+    "label": "Net change in cash",
+    "units": {
+     "USD": [
+      {
+       "end": "2025-12-31",
+       "val": 5000000000,
+       "accn": "0009999002-26-000010",
+       "fy": 2026,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-02-17",
+       "start": "2025-01-01"
+      }
+     ]
+    }
+   },
+   "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": {
+    "label": "Cash and restricted cash",
+    "units": {
+     "USD": [
+      {
+       "end": "2024-12-31",
+       "val": 400000000000,
+       "accn": "0009999002-25-000010",
+       "fy": 2025,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2025-02-18"
+      },
+      {
+       "end": "2025-12-31",
+       "val": 405000000000,
+       "accn": "0009999002-26-000010",
+       "fy": 2026,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2026-02-17"
+      }
+     ]
+    }
    }
   }
  }
