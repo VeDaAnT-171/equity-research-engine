@@ -1,0 +1,13 @@
+schema_version: "1"
+company:
+  name: "Example Industrial AG"
+  ticker: "EXIN"
+  exchange: "XETRA"
+  country: "Germany"
+  reporting_currency: "EUR"
+  identifiers:
+    lei: "529900EXAMPLE0000012"
+sources:
+  annual_reports:
+    - path: "docs/annual_report_2025.pdf"
+      fiscal_period: FY2025

@@ -1,0 +1,71 @@
+name: software
+display_name: Software and SaaS
+extends: generic
+
+classification:
+  sic_ranges: [[7370, 7379]]
+  keywords: [software, subscription, saas, annual recurring revenue]
+
+metrics:
+  - id: remaining_performance_obligations
+    name: Remaining performance obligations
+    unit_kind: currency
+    statement: operating
+    period_type: instant
+    xbrl_concepts: [us-gaap:RevenueRemainingPerformanceObligation]
+  - id: stock_based_compensation
+    name: Stock-based compensation
+    unit_kind: currency
+    statement: cash_flow
+    period_type: duration
+    xbrl_concepts: [us-gaap:ShareBasedCompensation]
+  - id: annual_recurring_revenue
+    name: Annual recurring revenue
+    unit_kind: currency
+    statement: operating
+    period_type: instant
+    extraction_hint: Company-defined KPI; record the company's own definition alongside the value.
+  - id: customers
+    name: Customers
+    unit_kind: count
+    statement: operating
+    period_type: instant
+    extraction_hint: Company-defined customer count; thresholds (e.g. >$100k) differ by company.
+  - id: net_revenue_retention
+    name: Net revenue retention
+    unit_kind: ratio
+    statement: operating
+    period_type: duration
+    extraction_hint: Usually disclosed in earnings materials, not financial statements.
+  - id: revenue_per_customer
+    name: Revenue per customer
+    unit_kind: currency
+    statement: operating
+    period_type: duration
+    derivation: revenue / customers
+  - id: fcf_margin
+    name: Free cash flow margin
+    unit_kind: ratio
+    statement: cash_flow
+    period_type: duration
+    derivation: free_cash_flow / revenue
+  - id: sbc_to_revenue
+    name: SBC / revenue
+    unit_kind: ratio
+    statement: cash_flow
+    period_type: duration
+    derivation: stock_based_compensation / revenue
+
+drivers:
+  - id: revenue_trajectory
+    name: Customers x revenue per customer
+    affects: [revenue]
+    formula: customers * revenue_per_customer
+  - id: retention
+    name: Net revenue retention
+    affects: [annual_recurring_revenue]
+
+valuation:
+  preferred: [dcf_fcff, ev_revenue, ev_fcf, pe]
+  excluded:
+    pb: Book value is dominated by intangibles and buybacks and carries little information about software economics.

@@ -1,0 +1,59 @@
+name: industrials
+display_name: Industrial manufacturers
+extends: generic
+
+classification:
+  sic_ranges: [[3400, 3599], [3700, 3799]]
+  keywords: [backlog, orders, manufacturing, aftermarket]
+
+metrics:
+  - id: depreciation_and_amortization
+    name: Depreciation and amortization
+    unit_kind: currency
+    statement: cash_flow
+    period_type: duration
+    xbrl_concepts: [us-gaap:DepreciationDepletionAndAmortization]
+  - id: ebitda
+    name: EBITDA
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    derivation: operating_income + depreciation_and_amortization
+  - id: inventory
+    name: Inventory
+    unit_kind: currency
+    statement: balance_sheet
+    period_type: instant
+    xbrl_concepts: [us-gaap:InventoryNet]
+  - id: backlog
+    name: Backlog
+    unit_kind: currency
+    statement: operating
+    period_type: instant
+    extraction_hint: MD&A or earnings release; confirm whether backlog is funded or total.
+  - id: backlog_conversion
+    name: Revenue / period-end backlog
+    unit_kind: ratio
+    statement: operating
+    period_type: duration
+    derivation: revenue / backlog
+  - id: capex_intensity
+    name: Capex / revenue
+    unit_kind: ratio
+    statement: cash_flow
+    period_type: duration
+    derivation: capital_expenditure / revenue
+
+drivers:
+  - id: revenue_trajectory
+    name: Backlog conversion
+    description: Uses period-end backlog as a proxy for opening backlog; the forecast phase lags it.
+    affects: [revenue]
+    formula: backlog * backlog_conversion
+  - id: operating_leverage
+    name: Operating margin
+    affects: [operating_income]
+    formula: revenue * operating_margin
+
+valuation:
+  preferred: [dcf_fcff, ev_ebitda, pe]

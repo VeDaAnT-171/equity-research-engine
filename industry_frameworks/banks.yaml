@@ -1,0 +1,158 @@
+name: banks
+display_name: Commercial and universal banks
+description: Deposit-funded balance-sheet lenders. Debt is operating raw material, not financing.
+extends: generic
+
+classification:
+  sic_ranges: [[6020, 6029], [6035, 6036]]
+  keywords: [bank, deposits, net interest income, loans]
+
+# Industrial concepts that are meaningless or misleading for a bank.
+remove_metrics: [cost_of_revenue, gross_profit, gross_margin, operating_income, operating_margin, capital_expenditure, free_cash_flow, total_debt]
+remove_drivers: [operating_leverage]
+
+metrics:
+  - id: net_interest_income
+    name: Net interest income
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:InterestIncomeExpenseNet]
+  - id: noninterest_income
+    name: Noninterest revenue
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:NoninterestIncome]
+  - id: revenue
+    name: Total net revenue
+    description: Reported total if tagged; otherwise NII plus noninterest revenue.
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:Revenues]
+    derivation: net_interest_income + noninterest_income
+  - id: noninterest_expense
+    name: Noninterest expense
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:NoninterestExpense]
+  - id: provision_for_credit_losses
+    name: Provision for credit losses
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:ProvisionForLoanLeaseAndOtherLosses, us-gaap:ProvisionForLoanAndLeaseLosses]
+  - id: pre_tax_income
+    name: Pre-tax income
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest]
+  - id: net_income_to_common
+    name: Net income applicable to common
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:NetIncomeLossAvailableToCommonStockholdersBasic]
+  - id: loans
+    name: Loans, net
+    unit_kind: currency
+    statement: balance_sheet
+    period_type: instant
+    xbrl_concepts: [us-gaap:LoansAndLeasesReceivableNetReportedAmount]
+  - id: deposits
+    name: Deposits
+    unit_kind: currency
+    statement: balance_sheet
+    period_type: instant
+    xbrl_concepts: [us-gaap:Deposits]
+  - id: average_interest_earning_assets
+    name: Average interest-earning assets
+    unit_kind: currency
+    statement: operating
+    period_type: duration
+    extraction_hint: Average balance sheet / net interest margin analysis table in the annual report.
+  - id: tangible_common_equity
+    name: Tangible common equity
+    unit_kind: currency
+    statement: balance_sheet
+    period_type: instant
+    extraction_hint: Non-GAAP reconciliation in earnings supplement; definitions vary by bank.
+  - id: cet1_ratio
+    name: CET1 ratio
+    unit_kind: ratio
+    statement: regulatory
+    period_type: instant
+    extraction_hint: Regulatory capital section; state Standardized vs Advanced approach.
+  - id: risk_weighted_assets
+    name: Risk-weighted assets
+    unit_kind: currency
+    statement: regulatory
+    period_type: instant
+    extraction_hint: Regulatory capital section; same approach as CET1.
+  - id: net_interest_margin
+    name: Net interest margin
+    unit_kind: ratio
+    statement: operating
+    period_type: duration
+    derivation: net_interest_income / average_interest_earning_assets
+  - id: credit_loss_rate
+    name: Provision / loans
+    unit_kind: ratio
+    statement: operating
+    period_type: duration
+    derivation: provision_for_credit_losses / loans
+  - id: efficiency_ratio
+    name: Efficiency ratio
+    unit_kind: ratio
+    statement: operating
+    period_type: duration
+    derivation: noninterest_expense / revenue
+  - id: rotce
+    name: Return on tangible common equity (period-end TCE)
+    unit_kind: ratio
+    statement: operating
+    period_type: duration
+    derivation: net_income_to_common / tangible_common_equity
+
+drivers:
+  - id: balance_sheet_growth
+    name: Loan and deposit growth
+    affects: [loans, deposits]
+  - id: net_interest_income_engine
+    name: Earning assets x margin
+    affects: [net_interest_income]
+    formula: average_interest_earning_assets * net_interest_margin
+  - id: credit_cost
+    name: Credit costs
+    affects: [provision_for_credit_losses]
+    formula: loans * credit_loss_rate
+  - id: capital_constraint
+    name: Capital requirement
+    description: CET1 x RWA bounds distributable capital.
+    affects: [cet1_ratio]
+
+valuation:
+  preferred: [residual_income, ptbv, pb, pe, dividend_discount]
+  excluded:
+    dcf_fcff: Debt and deposits are operating inputs for a bank; free cash flow to the firm is not meaningful.
+    ev_ebitda: Enterprise value and EBITDA are undefined when interest is the core revenue and cost line.
+    ev_revenue: Enterprise value is not meaningful for a deposit-funded balance sheet.
+
+report_sections:
+  - executive_summary
+  - market_expectations
+  - variant_perception
+  - business_overview
+  - historical_analysis
+  - capital_and_credit
+  - business_drivers
+  - forecast
+  - valuation
+  - sensitivity
+  - catalysts
+  - risks
+  - falsification
+  - appendix

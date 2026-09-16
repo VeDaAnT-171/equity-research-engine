@@ -1,0 +1,39 @@
+# DEMONSTRATION CONFIG ONLY. Nothing about this company exists in src/ or industry_frameworks/;
+# tests/test_company_agnostic.py enforces that.
+schema_version: "1"
+
+company:
+  name: "JPMorgan Chase & Co."
+  ticker: "JPM"
+  exchange: "NYSE"
+  country: "United States"
+  sector: "Financials"          # hint only; classification uses filing evidence (SIC from SEC submissions)
+  identifiers:
+    cik: "0000019617"
+  reporting_currency: "USD"
+  fiscal_year_end_month: 12
+
+sources:
+  structured_filings:
+    - url: "https://data.sec.gov/api/xbrl/companyfacts/CIK0000019617.json"
+      label: "SEC XBRL company facts (primary numeric source)"
+    - url: "https://data.sec.gov/submissions/CIK0000019617.json"
+      label: "SEC submissions index (SIC code, filing list)"
+
+  # Add document URLs here. Left empty deliberately rather than guessing links.
+  investor_relations:
+    url: ""
+  annual_reports: []
+  quarterly_reports: []
+  earnings_presentations: []
+  earnings_transcripts: []
+
+  optional_consensus:
+    url: ""
+  optional_market_data:
+    url: ""
+
+research:
+  historical_years: 10
+  forecast_years: 5
+  valuation_methods: [relative, intrinsic, scenario]

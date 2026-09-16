@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "research-engine"
+version = "0.1.0"
+description = "Company-agnostic institutional equity research engine"
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2.5", "pyyaml>=6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+research-engine = "research_engine.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

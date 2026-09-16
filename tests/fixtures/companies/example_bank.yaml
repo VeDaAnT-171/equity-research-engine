@@ -1,0 +1,25 @@
+schema_version: 1
+company:
+  name: "Example Bank Corp"
+  ticker: "exbk"
+  exchange: "NYSE"
+  country: "United States"
+  industry_framework: banks
+  identifiers:
+    cik: 1234567
+sources:
+  investor_relations:
+    url: "https://example.com/investors"
+  annual_reports:
+    - url: "https://example.com/reports/annual-2025.pdf"
+      fiscal_period: FY2025
+  quarterly_reports:
+    - url: "https://example.com/reports/q1-2026.pdf"
+      fiscal_period: Q1-2026
+    - url: ""
+  optional_consensus:
+    url: ""
+research:
+  historical_years: 8
+  forecast_years: 3
+  valuation_methods: [intrinsic, relative]

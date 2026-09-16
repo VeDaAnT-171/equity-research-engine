@@ -1,0 +1,148 @@
+# Root framework. Every other framework extends this directly or indirectly.
+# xbrl_concepts are ORDERED CANDIDATES. Whether a filer actually uses them is verified at
+# extraction time and reported in the data-quality output; it is never assumed.
+name: generic
+display_name: Generic operating company
+description: Fallback for companies without a more specific framework.
+
+metrics:
+  - id: revenue
+    name: Revenue
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:Revenues, us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax, ifrs-full:Revenue]
+  - id: cost_of_revenue
+    name: Cost of revenue
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:CostOfRevenue, us-gaap:CostOfGoodsAndServicesSold, ifrs-full:CostOfSales]
+  - id: gross_profit
+    name: Gross profit
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:GrossProfit, ifrs-full:GrossProfit]
+    derivation: revenue - cost_of_revenue
+  - id: operating_income
+    name: Operating income
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:OperatingIncomeLoss, ifrs-full:ProfitLossFromOperatingActivities]
+  - id: net_income
+    name: Net income
+    description: IFRS ProfitLoss includes non-controlling interests; attribution is checked at extraction.
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:NetIncomeLoss, ifrs-full:ProfitLoss]
+  - id: diluted_eps
+    name: Diluted EPS
+    unit_kind: currency_per_share
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:EarningsPerShareDiluted, ifrs-full:DilutedEarningsLossPerShare]
+  - id: diluted_shares
+    name: Weighted average diluted shares
+    unit_kind: count
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding]
+  - id: operating_cash_flow
+    name: Cash flow from operations
+    unit_kind: currency
+    statement: cash_flow
+    period_type: duration
+    xbrl_concepts: [us-gaap:NetCashProvidedByUsedInOperatingActivities, ifrs-full:CashFlowsFromUsedInOperatingActivities]
+  - id: capital_expenditure
+    name: Capital expenditure
+    description: Reported as a positive payment amount.
+    unit_kind: currency
+    statement: cash_flow
+    period_type: duration
+    xbrl_concepts: [us-gaap:PaymentsToAcquirePropertyPlantAndEquipment, ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities]
+  - id: free_cash_flow
+    name: Free cash flow
+    unit_kind: currency
+    statement: cash_flow
+    period_type: duration
+    derivation: operating_cash_flow - capital_expenditure
+  - id: total_assets
+    name: Total assets
+    unit_kind: currency
+    statement: balance_sheet
+    period_type: instant
+    xbrl_concepts: [us-gaap:Assets, ifrs-full:Assets]
+  - id: total_liabilities
+    name: Total liabilities
+    unit_kind: currency
+    statement: balance_sheet
+    period_type: instant
+    xbrl_concepts: [us-gaap:Liabilities, ifrs-full:Liabilities]
+  - id: total_equity
+    name: Total equity
+    unit_kind: currency
+    statement: balance_sheet
+    period_type: instant
+    xbrl_concepts: [us-gaap:StockholdersEquity, ifrs-full:Equity]
+  - id: cash_and_equivalents
+    name: Cash and equivalents
+    unit_kind: currency
+    statement: balance_sheet
+    period_type: instant
+    xbrl_concepts: [us-gaap:CashAndCashEquivalentsAtCarryingValue, ifrs-full:CashAndCashEquivalents]
+  - id: total_debt
+    name: Total debt
+    unit_kind: currency
+    statement: balance_sheet
+    period_type: instant
+    xbrl_concepts: [us-gaap:LongTermDebt]
+    extraction_hint: Sum of current and non-current borrowings; tag coverage varies widely by filer.
+  - id: gross_margin
+    name: Gross margin
+    unit_kind: ratio
+    statement: income_statement
+    period_type: duration
+    derivation: gross_profit / revenue
+  - id: operating_margin
+    name: Operating margin
+    unit_kind: ratio
+    statement: income_statement
+    period_type: duration
+    derivation: operating_income / revenue
+  - id: return_on_equity
+    name: Return on equity (period-end equity)
+    unit_kind: ratio
+    statement: income_statement
+    period_type: duration
+    derivation: net_income / total_equity
+
+drivers:
+  - id: revenue_trajectory
+    name: Revenue trajectory
+    description: Trend/assumption-driven until a more specific framework supplies unit economics.
+    affects: [revenue]
+  - id: operating_leverage
+    name: Operating margin
+    affects: [operating_income]
+    formula: revenue * operating_margin
+
+valuation:
+  preferred: [dcf_fcff, ev_ebitda, pe, ev_revenue]
+
+report_sections:
+  - executive_summary
+  - market_expectations
+  - variant_perception
+  - business_overview
+  - historical_analysis
+  - business_drivers
+  - forecast
+  - valuation
+  - sensitivity
+  - catalysts
+  - risks
+  - falsification
+  - appendix
