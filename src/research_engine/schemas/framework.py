@@ -136,6 +136,76 @@ class IdentityCheck(StrictModel):
         return name[: -len(OPENING_SUFFIX)] if name.endswith(OPENING_SUFFIX) else name
 
 
+AnalyticCategory = Literal[
+    "growth", "profitability", "returns", "efficiency", "capital_intensity", "leverage", "liquidity",
+    "credit", "capital", "per_share", "operating",
+]
+
+
+class AnalyticSpec(StrictModel):
+    """A historical analytic computed on annual data. Kinds:
+    level      -- a metric or analytic series as-is (for summaries and charts)
+    growth     -- year-on-year change of `metric`
+    ratio      -- numerator / denominator; instant (balance) terms in the denominator use `denominator_basis`
+    expression -- `formula` over same-period values
+    elasticity -- growth of `of` divided by growth of `relative_to` (e.g. degree of operating leverage)
+    """
+
+    id: str = Field(pattern=METRIC_ID_PATTERN)
+    name: str = Field(min_length=1)
+    description: str = ""
+    category: AnalyticCategory
+    kind: Literal["level", "growth", "ratio", "expression", "elasticity"]
+    unit_kind: Literal["ratio", "currency", "currency_per_share", "multiple", "count"]
+    metric: Optional[str] = None
+    numerator: Optional[str] = None
+    denominator: Optional[str] = None
+    denominator_basis: Literal["period_end", "average", "opening"] = "period_end"
+    formula: Optional[str] = None
+    of: Optional[str] = None
+    relative_to: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> "AnalyticSpec":
+        required = {
+            "level": ("metric",), "growth": ("metric",), "ratio": ("numerator", "denominator"),
+            "expression": ("formula",), "elasticity": ("of", "relative_to"),
+        }[self.kind]
+        all_fields = ("metric", "numerator", "denominator", "formula", "of", "relative_to")
+        missing = [f for f in required if getattr(self, f) is None]
+        extra = [f for f in all_fields if f not in required and getattr(self, f) is not None]
+        if missing or extra:
+            raise ValueError(f"analytic {self.id!r} ({self.kind}) requires {list(required)}"
+                             + (f"; unexpected {extra}" if extra else ""))
+        if self.denominator_basis != "period_end" and self.kind != "ratio":
+            raise ValueError(f"analytic {self.id!r}: denominator_basis applies only to ratios")
+        if self.kind == "growth" and self.unit_kind != "ratio":
+            raise ValueError(f"analytic {self.id!r}: growth is a ratio")
+        if self.kind == "elasticity" and self.unit_kind != "multiple":
+            raise ValueError(f"analytic {self.id!r}: elasticity is a multiple")
+        for expr in (self.numerator, self.denominator, self.formula):
+            if expr is not None:
+                referenced_names(expr)
+        return self
+
+    @property
+    def references(self) -> frozenset[str]:
+        names: set[str] = set()
+        for expr in (self.numerator, self.denominator, self.formula):
+            if expr:
+                names |= referenced_names(expr)
+        names |= {n for n in (self.metric, self.of, self.relative_to) if n}
+        return frozenset(names)
+
+
+class ChartSpec(StrictModel):
+    id: str = Field(pattern=METRIC_ID_PATTERN)
+    title: str = Field(min_length=1)
+    kind: Literal["bar", "line"]
+    series: tuple[str, ...] = Field(min_length=1, max_length=6)
+    format: Literal["currency", "percent", "multiple", "number"]
+
+
 class ValuationPolicy(StrictModel):
     preferred: tuple[ValuationMethod, ...] = ()
     excluded: dict[ValuationMethod, str] = Field(default_factory=dict)  # method -> reason
@@ -183,6 +253,10 @@ class IndustryFramework(StrictModel):
     remove_drivers: tuple[str, ...] = ()
     checks: tuple[IdentityCheck, ...] = ()
     remove_checks: tuple[str, ...] = ()
+    analytics: tuple[AnalyticSpec, ...] = ()
+    remove_analytics: tuple[str, ...] = ()
+    charts: tuple[ChartSpec, ...] = ()
+    remove_charts: tuple[str, ...] = ()
     valuation: ValuationPolicy = Field(default_factory=ValuationPolicy)
     report_sections: tuple[str, ...] = ()
 
@@ -199,6 +273,16 @@ class IndustryFramework(StrictModel):
     @property
     def metric_ids(self) -> frozenset[str]:
         return frozenset(m.id for m in self.metrics)
+
+    @property
+    def analytic_ids(self) -> frozenset[str]:
+        return frozenset(a.id for a in self.analytics)
+
+    def analytic(self, analytic_id: str) -> AnalyticSpec:
+        for a in self.analytics:
+            if a.id == analytic_id:
+                return a
+        raise KeyError(f"framework {self.name!r} has no analytic {analytic_id!r}")
 
     def metric(self, metric_id: str) -> MetricSpec:
         for m in self.metrics:
@@ -224,6 +308,7 @@ class IndustryFramework(StrictModel):
         if clash:
             raise ValueError(f"ids used as both metric and driver: {sorted(clash)}")
         known = set(metric_ids)
+        by_id = {m.id: m for m in self.metrics}
         graph: dict[str, set[str]] = {}
         for m in self.metrics:
             if m.derivation:
@@ -231,16 +316,48 @@ class IndustryFramework(StrictModel):
                 unknown = names - known
                 if unknown:
                     raise ValueError(f"metric {m.id!r} derivation references unknown metrics {sorted(unknown)}")
+                mixed = sorted(n for n in names if by_id[n].period_type is not m.period_type)
+                if mixed:
+                    raise ValueError(
+                        f"metric {m.id!r} ({m.period_type.value}) derivation uses {mixed} of a different period type; "
+                        "flow-to-balance ratios need an explicit balance basis: define them as analytics"
+                    )
                 graph[m.id] = set(names)
         _assert_acyclic(graph)
+
+        analytic_ids = [a.id for a in self.analytics]
+        if len(set(analytic_ids)) != len(analytic_ids):
+            raise ValueError("duplicate analytic ids")
+        overlap = set(analytic_ids) & (known | set(driver_ids))
+        if overlap:
+            raise ValueError(f"analytic ids collide with metric or driver ids: {sorted(overlap)}")
+        series_ids = known | set(analytic_ids)
+        analytic_graph: dict[str, set[str]] = {}
+        for a in self.analytics:
+            unknown = a.references - series_ids
+            if unknown:
+                raise ValueError(f"analytic {a.id!r} references unknown metrics or analytics {sorted(unknown)}")
+            if a.kind == "ratio" and a.denominator_basis != "period_end":
+                balance_terms = [n for n in referenced_names(a.denominator) if n in by_id and by_id[n].period_type is PeriodType.INSTANT]
+                if not balance_terms:
+                    raise ValueError(f"analytic {a.id!r}: denominator_basis {a.denominator_basis!r} needs a balance-sheet (instant) term")
+            analytic_graph[a.id] = set(a.references) & set(analytic_ids)
+        _assert_acyclic(analytic_graph)
+        chart_ids = [c.id for c in self.charts]
+        if len(set(chart_ids)) != len(chart_ids):
+            raise ValueError("duplicate chart ids")
+        for c in self.charts:
+            unknown = set(c.series) - series_ids
+            if unknown:
+                raise ValueError(f"chart {c.id!r} references unknown series {sorted(unknown)}")
         for d in self.drivers:
             unknown = set(d.affects) - known
             if unknown:
                 raise ValueError(f"driver {d.id!r} affects unknown metrics {sorted(unknown)}")
             if d.formula:
-                unknown = referenced_names(d.formula) - known
+                unknown = referenced_names(d.formula) - series_ids
                 if unknown:
-                    raise ValueError(f"driver {d.id!r} formula references unknown metrics {sorted(unknown)}")
+                    raise ValueError(f"driver {d.id!r} formula references unknown metrics or analytics {sorted(unknown)}")
         for check in self.checks:
             for name in check.names:
                 base = IdentityCheck.base_metric(name)
@@ -260,7 +377,7 @@ def _assert_acyclic(graph: dict[str, set[str]]) -> None:
             return
         if state.get(node) == 1:
             cycle = path[path.index(node):] + [node]
-            raise ValueError(f"circular metric derivation: {' -> '.join(cycle)}")
+            raise ValueError(f"circular derivation: {' -> '.join(cycle)}")
         state[node] = 1
         for dep in graph.get(node, ()):
             visit(dep, path + [node])

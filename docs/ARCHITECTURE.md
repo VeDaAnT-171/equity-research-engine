@@ -23,7 +23,7 @@ flowchart TD
     F -. lineage .-> O
 ```
 
-Phases 1–3 implement A–D, E1, F, G, SIC-based H, the schemas for K, and the lineage graph used by O.
+Phases 1–4 implement A–D, E1, F, G, SIC-based H, I (historical analysis), the schemas for K, and lineage through charts.
 
 ## Package map
 
@@ -40,6 +40,7 @@ src/research_engine/
   pipeline/     ingestion orchestration and output writers
   calendar.py   fiscal calendar (dates -> fiscal periods)
   quality/      derived facts, identity and continuity checks, HTML report
+  analysis/     historical analytics, summaries, charts, Markdown tables
   classification.py  framework selection (override > SIC > generic)
   expressions.py  whitelisted-AST arithmetic for derivations and driver formulas
   cli.py        validate | frameworks | research
@@ -74,6 +75,13 @@ companies/             one directory per company (data)
 | D19 | Derived facts never replace reported ones; where both exist and the definition is additive, they are compared | Keeps reported data authoritative while surfacing definition differences | Filer-specific definitions show up as warnings to triage |
 | D20 | Outlier and scale rules are statistical conventions with stated parameters (modified z > 3.5; 10^3k ± 0.2 log10) | Spec forbids arbitrary thresholds; these are traceable and adjustable in one place | Flags are prompts for review, not conclusions |
 
+| D21 | Framework metrics are financial quantities (and company-reported operating ratios); engine-computed ratios are analytics | One place for each concept; avoids two ROEs with different definitions | Moved 11 Phase 3 metric derivations into analytics |
+| D22 | A metric derivation may not mix flows and balances; ratios with balance denominators declare `average` or `opening` | Dividing a year of income by one day's balance misstates returns whenever the balance sheet moves | Averages need a prior year-end, so the first year of history is not computed (labelled `start_of_history`) |
+| D23 | Non-positive denominators and growth bases are not computed | Margins on negative revenue or returns on negative equity have no interpretation | Distressed companies show gaps rather than misleading numbers |
+| D24 | Error-severity data-quality issues block their facts; warnings propagate as flags to every dependent value and chart point | Analysis should never silently rest on data that failed a hard check | Flags accumulate through chained analytics |
+| D25 | Stages verify framework and upstream manifest hashes before running | A framework edited after ingestion would silently change mappings | Any framework edit requires re-running `ingest` |
+| D26 | Charts are framework data; derived points are hollow/hatched, flagged points carry † | The chart itself discloses provenance, not only the appendix | Fixed visual grammar across industries |
+
 ## Invariants tested
 
 - No configured company identifier appears in `src/` or `industry_frameworks/`.
@@ -85,3 +93,5 @@ companies/             one directory per company (data)
 - Wrong CIK fails before any network call; wrong ticker fails before extraction.
 - A derived quarter traces through its inputs to source URLs.
 - Loosening the tolerance, skipping derived facts in sign checks, or disabling the consistency check each fails tests (verified by mutation).
+- A chart traces chart → analytic value → fact → document → source URL.
+- Replacing the average basis with closing balances, disabling the quality gate, allowing negative denominators, or allowing flow-to-balance derivations each fails tests (verified by mutation).

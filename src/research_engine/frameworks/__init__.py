@@ -1,3 +1,3 @@
-from .loader import FrameworkRegistry
+from .loader import FrameworkRegistry, framework_fingerprint
 
-__all__ = ["FrameworkRegistry"]
+__all__ = ["FrameworkRegistry", "framework_fingerprint"]

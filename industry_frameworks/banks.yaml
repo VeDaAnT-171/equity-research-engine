@@ -8,7 +8,7 @@ classification:
   keywords: [bank, deposits, net interest income, loans]
 
 # Industrial concepts that are meaningless or misleading for a bank.
-remove_metrics: [cost_of_revenue, gross_profit, gross_margin, operating_income, operating_margin, capital_expenditure, free_cash_flow, total_debt]
+remove_metrics: [cost_of_revenue, gross_profit, operating_income, capital_expenditure, free_cash_flow, total_debt]
 remove_drivers: [operating_leverage]
 
 metrics:
@@ -46,12 +46,6 @@ metrics:
     statement: income_statement
     period_type: duration
     xbrl_concepts: [us-gaap:ProvisionForLoanLeaseAndOtherLosses, us-gaap:ProvisionForLoanAndLeaseLosses]
-  - id: pre_tax_income
-    name: Pre-tax income
-    unit_kind: currency
-    statement: income_statement
-    period_type: duration
-    xbrl_concepts: [us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest]
   - id: net_income_to_common
     name: Net income applicable to common
     unit_kind: currency
@@ -103,24 +97,30 @@ metrics:
     statement: operating
     period_type: duration
     derivation: net_interest_income / average_interest_earning_assets
-  - id: credit_loss_rate
-    name: Provision / loans
-    unit_kind: ratio
-    statement: operating
-    period_type: duration
-    derivation: provision_for_credit_losses / loans
-  - id: efficiency_ratio
-    name: Efficiency ratio
-    unit_kind: ratio
-    statement: operating
-    period_type: duration
-    derivation: noninterest_expense / revenue
-  - id: rotce
-    name: Return on tangible common equity (period-end TCE)
-    unit_kind: ratio
-    statement: operating
-    period_type: duration
-    derivation: net_income_to_common / tangible_common_equity
+
+remove_analytics: [operating_income_growth, gross_margin, operating_margin, free_cash_flow_margin, nopat, invested_capital,
+                   roic, asset_turnover, capex_to_revenue, capex_to_operating_cash_flow, debt_to_equity, net_debt,
+                   degree_of_operating_leverage]
+remove_charts: [margins, returns, cash_flow, leverage]
+
+analytics:
+  - {id: net_interest_income_growth, name: Net interest income growth, category: growth, kind: growth, unit_kind: ratio, metric: net_interest_income}
+  - {id: loan_growth, name: Loan growth, category: growth, kind: growth, unit_kind: ratio, metric: loans}
+  - {id: deposit_growth, name: Deposit growth, category: growth, kind: growth, unit_kind: ratio, metric: deposits}
+  - {id: noninterest_income_share, name: Noninterest revenue share, category: operating, kind: ratio, unit_kind: ratio, numerator: noninterest_income, denominator: revenue}
+  - {id: efficiency_ratio, name: Efficiency ratio, category: efficiency, kind: ratio, unit_kind: ratio, numerator: noninterest_expense, denominator: revenue}
+  - {id: pre_provision_profit, name: Pre-provision profit, category: profitability, kind: expression, unit_kind: currency, formula: revenue - noninterest_expense}
+  - {id: credit_loss_rate, name: Provision / average loans, category: credit, kind: ratio, unit_kind: ratio, numerator: provision_for_credit_losses, denominator: loans, denominator_basis: average}
+  - {id: loan_to_deposit, name: Loans / deposits, category: liquidity, kind: ratio, unit_kind: ratio, numerator: loans, denominator: deposits}
+  - {id: equity_to_assets, name: Equity / assets, category: capital, kind: ratio, unit_kind: ratio, numerator: total_equity, denominator: total_assets}
+  - {id: rotce, name: Return on average tangible common equity, category: returns, kind: ratio, unit_kind: ratio, numerator: net_income_to_common, denominator: tangible_common_equity, denominator_basis: average}
+
+charts:
+  - {id: bank_returns, title: Returns, kind: line, series: [rotce, return_on_average_equity, return_on_average_assets], format: percent}
+  - {id: bank_revenue_mix, title: Revenue mix, kind: bar, series: [net_interest_income, noninterest_income], format: currency}
+  - {id: bank_credit, title: Credit costs, kind: line, series: [credit_loss_rate], format: percent}
+  - {id: bank_balance_sheet, title: Balance sheet ratios, kind: line, series: [loan_to_deposit, equity_to_assets], format: percent}
+  - {id: bank_efficiency, title: Efficiency ratio, kind: line, series: [efficiency_ratio], format: percent}
 
 drivers:
   - id: balance_sheet_growth

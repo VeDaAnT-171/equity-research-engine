@@ -96,6 +96,7 @@ def write_ingestion_outputs(result: "IngestionResult", config: ProjectConfig, do
         "company_id": result.company_id,
         "config_sha256": config_hash,
         "framework": result.framework.__dict__ if result.framework else None,
+        "framework_sha256": result.framework_sha256,
         "fiscal_calendar": result.calendar.__dict__ if result.calendar else None,
         "documents": [{"document_id": d.document_id, "status": d.status.value, "file_hash": d.file_hash,
                        "source": d.source_url or d.local_source_path} for d in documents],

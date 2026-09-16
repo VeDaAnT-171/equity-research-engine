@@ -34,23 +34,23 @@ metrics:
     period_type: instant
     expected_sign: non_negative
     extraction_hint: MD&A or earnings release; confirm whether backlog is funded or total.
-  - id: backlog_conversion
-    name: Revenue / period-end backlog
-    unit_kind: ratio
-    statement: operating
-    period_type: duration
-    derivation: revenue / backlog
-  - id: capex_intensity
-    name: Capex / revenue
-    unit_kind: ratio
-    statement: cash_flow
-    period_type: duration
-    derivation: capital_expenditure / revenue
+
+analytics:
+  - {id: ebitda_margin, name: EBITDA margin, category: profitability, kind: ratio, unit_kind: ratio, numerator: ebitda, denominator: revenue}
+  - {id: backlog_conversion, name: Revenue / opening backlog, category: operating, kind: ratio, unit_kind: ratio, numerator: revenue, denominator: backlog, denominator_basis: opening}
+  - {id: backlog_coverage, name: Backlog / revenue, category: operating, kind: ratio, unit_kind: multiple, numerator: backlog, denominator: revenue}
+  - {id: net_debt_to_ebitda, name: Net debt / EBITDA, category: leverage, kind: ratio, unit_kind: multiple, numerator: total_debt - cash_and_equivalents, denominator: ebitda}
+  - {id: capex_to_depreciation, name: Capex / D&A, category: capital_intensity, kind: ratio, unit_kind: multiple, numerator: capital_expenditure, denominator: depreciation_and_amortization}
+  - {id: inventory_turnover, name: Inventory turnover, category: efficiency, kind: ratio, unit_kind: multiple, numerator: cost_of_revenue, denominator: inventory, denominator_basis: average}
+
+charts:
+  - {id: industrial_margins, title: Margins, kind: line, series: [gross_margin, ebitda_margin, operating_margin], format: percent}
+  - {id: backlog, title: Backlog, kind: bar, series: [backlog], format: currency}
 
 drivers:
   - id: revenue_trajectory
     name: Backlog conversion
-    description: Uses period-end backlog as a proxy for opening backlog; the forecast phase lags it.
+    description: Opening backlog times the conversion rate observed historically.
     affects: [revenue]
     formula: backlog * backlog_conversion
   - id: operating_leverage

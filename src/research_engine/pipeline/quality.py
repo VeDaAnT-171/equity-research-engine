@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..errors import ConfigError, ExtractionError
-from ..frameworks import FrameworkRegistry
+from ..frameworks import FrameworkRegistry, framework_fingerprint
 from ..lineage import LineageGraph
 from ..quality import QualityReport, run_quality
 from ..quality.html import render_html
@@ -54,6 +54,9 @@ def run_quality_stage(config: ProjectConfig, *, workspace: Path, frameworks: Fra
         raise ConfigError("ingestion manifest has no framework selection; re-run `ingest`")
 
     framework = frameworks.get(manifest["framework"]["name"])
+    fingerprint = framework_fingerprint(framework)
+    if manifest.get("framework_sha256") != fingerprint:
+        raise ConfigError(f"industry framework {framework.name!r} changed since the last ingestion; re-run `ingest`")
     facts = _load_facts(out / "facts.jsonl")
     extraction_path = out / "extraction_report.json"
     extraction = json.loads(extraction_path.read_text()) if extraction_path.is_file() else None
@@ -90,6 +93,7 @@ def run_quality_stage(config: ProjectConfig, *, workspace: Path, frameworks: Fra
         "generated_at": generated_at,
         "ingestion_manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
         "framework": framework.name,
+        "framework_sha256": fingerprint,
         "facts_current_reported": len(current),
         "facts_derived": len(derived),
         "issue_counts": report.counts(),

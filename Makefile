@@ -2,7 +2,7 @@ PY ?= python3
 CONFIG ?= companies/nyse-jpm/config.yaml
 FRAMEWORKS ?= industry_frameworks
 
-.PHONY: install test validate frameworks ingest quality data research
+.PHONY: install test validate frameworks ingest quality analyze data research
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -22,7 +22,10 @@ ingest:
 quality:
 	PYTHONPATH=src $(PY) -m research_engine quality --config $(CONFIG) --frameworks $(FRAMEWORKS) $(QARGS)
 
-data: ingest quality
+analyze:
+	PYTHONPATH=src $(PY) -m research_engine analyze --config $(CONFIG) --frameworks $(FRAMEWORKS)
+
+data: ingest quality analyze
 
 # Fails loudly until the pipeline phases exist. Never silently no-ops.
 research:

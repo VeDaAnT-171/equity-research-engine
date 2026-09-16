@@ -40,25 +40,17 @@ metrics:
     statement: operating
     period_type: duration
     extraction_hint: Usually disclosed in earnings materials, not financial statements.
-  - id: revenue_per_customer
-    name: Revenue per customer
-    unit_kind: currency
-    statement: operating
-    period_type: duration
-    derivation: revenue / customers
-    additive: false
-  - id: fcf_margin
-    name: Free cash flow margin
-    unit_kind: ratio
-    statement: cash_flow
-    period_type: duration
-    derivation: free_cash_flow / revenue
-  - id: sbc_to_revenue
-    name: SBC / revenue
-    unit_kind: ratio
-    statement: cash_flow
-    period_type: duration
-    derivation: stock_based_compensation / revenue
+
+analytics:
+  - {id: revenue_per_customer, name: Revenue per average customer, category: efficiency, kind: ratio, unit_kind: currency, numerator: revenue, denominator: customers, denominator_basis: average}
+  - {id: sbc_to_revenue, name: Stock-based compensation / revenue, category: profitability, kind: ratio, unit_kind: ratio, numerator: stock_based_compensation, denominator: revenue}
+  - {id: arr_growth, name: ARR growth, category: growth, kind: growth, unit_kind: ratio, metric: annual_recurring_revenue}
+  - {id: customer_growth, name: Customer growth, category: growth, kind: growth, unit_kind: ratio, metric: customers}
+  - {id: rpo_growth, name: RPO growth, category: growth, kind: growth, unit_kind: ratio, metric: remaining_performance_obligations}
+
+charts:
+  - {id: software_cash_economics, title: Cash margin and dilution, kind: line, series: [free_cash_flow_margin, sbc_to_revenue], format: percent}
+  - {id: software_customers, title: Revenue per average customer, kind: line, series: [revenue_per_customer], format: currency}
 
 drivers:
   - id: revenue_trajectory

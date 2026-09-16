@@ -33,6 +33,18 @@ metrics:
     statement: income_statement
     period_type: duration
     xbrl_concepts: [us-gaap:OperatingIncomeLoss, ifrs-full:ProfitLossFromOperatingActivities]
+  - id: pre_tax_income
+    name: Pre-tax income
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest, ifrs-full:ProfitLossBeforeTax]
+  - id: income_tax_expense
+    name: Income tax expense
+    unit_kind: currency
+    statement: income_statement
+    period_type: duration
+    xbrl_concepts: [us-gaap:IncomeTaxExpenseBenefit, ifrs-full:IncomeTaxExpenseContinuingOperations]
   - id: net_income
     name: Net income
     description: IFRS ProfitLoss includes non-controlling interests; attribution is checked at extraction.
@@ -140,24 +152,6 @@ metrics:
     expected_sign: non_negative
     xbrl_concepts: [us-gaap:LongTermDebt]
     extraction_hint: Sum of current and non-current borrowings; tag coverage varies widely by filer.
-  - id: gross_margin
-    name: Gross margin
-    unit_kind: ratio
-    statement: income_statement
-    period_type: duration
-    derivation: gross_profit / revenue
-  - id: operating_margin
-    name: Operating margin
-    unit_kind: ratio
-    statement: income_statement
-    period_type: duration
-    derivation: operating_income / revenue
-  - id: return_on_equity
-    name: Return on equity (period-end equity)
-    unit_kind: ratio
-    statement: income_statement
-    period_type: duration
-    derivation: net_income / total_equity
 
 # Accounting identities checked in the data-quality stage. Additive only: tolerances are derived from the
 # reporting precision of the terms, which is defined for sums but not for ratios.
@@ -181,6 +175,67 @@ checks:
     left: cash_and_restricted_cash__opening + net_change_in_cash
     right: cash_and_restricted_cash
     severity: error
+
+# Historical analytics (annual). Ratios whose denominator is a balance use an explicit basis:
+# `average` = mean of opening and closing balance, `opening` = prior year-end. Non-positive denominators
+# and bases are not computed (a margin on negative revenue or a return on negative equity has no meaning).
+analytics:
+  - {id: revenue_growth, name: Revenue growth, category: growth, kind: growth, unit_kind: ratio, metric: revenue}
+  - {id: operating_income_growth, name: Operating income growth, category: growth, kind: growth, unit_kind: ratio, metric: operating_income}
+  - {id: net_income_growth, name: Net income growth, category: growth, kind: growth, unit_kind: ratio, metric: net_income}
+  - {id: diluted_eps_growth, name: Diluted EPS growth, category: per_share, kind: growth, unit_kind: ratio, metric: diluted_eps}
+  - {id: operating_cash_flow_growth, name: Operating cash flow growth, category: growth, kind: growth, unit_kind: ratio, metric: operating_cash_flow}
+  - {id: gross_margin, name: Gross margin, category: profitability, kind: ratio, unit_kind: ratio, numerator: gross_profit, denominator: revenue}
+  - {id: operating_margin, name: Operating margin, category: profitability, kind: ratio, unit_kind: ratio, numerator: operating_income, denominator: revenue}
+  - {id: net_margin, name: Net margin, category: profitability, kind: ratio, unit_kind: ratio, numerator: net_income, denominator: revenue}
+  - {id: free_cash_flow_margin, name: Free cash flow margin, category: profitability, kind: ratio, unit_kind: ratio, numerator: free_cash_flow, denominator: revenue}
+  - {id: effective_tax_rate, name: Effective tax rate, category: profitability, kind: ratio, unit_kind: ratio, numerator: income_tax_expense, denominator: pre_tax_income}
+  - {id: return_on_average_equity, name: Return on average equity, category: returns, kind: ratio, unit_kind: ratio, numerator: net_income, denominator: total_equity, denominator_basis: average}
+  - {id: return_on_average_assets, name: Return on average assets, category: returns, kind: ratio, unit_kind: ratio, numerator: net_income, denominator: total_assets, denominator_basis: average}
+  - id: nopat
+    name: Net operating profit after tax
+    description: Operating income taxed at the year's effective tax rate.
+    category: returns
+    kind: expression
+    unit_kind: currency
+    formula: operating_income * (1 - effective_tax_rate)
+  - id: invested_capital
+    name: Invested capital (debt + equity - cash)
+    category: returns
+    kind: expression
+    unit_kind: currency
+    formula: total_debt + total_equity - cash_and_equivalents
+  - id: roic
+    name: Return on average invested capital
+    description: Sensitive to total_debt tag coverage; check the extraction report before relying on it.
+    category: returns
+    kind: ratio
+    unit_kind: ratio
+    numerator: nopat
+    denominator: total_debt + total_equity - cash_and_equivalents
+    denominator_basis: average
+  - {id: asset_turnover, name: Asset turnover, category: efficiency, kind: ratio, unit_kind: multiple, numerator: revenue, denominator: total_assets, denominator_basis: average}
+  - {id: capex_to_revenue, name: Capex / revenue, category: capital_intensity, kind: ratio, unit_kind: ratio, numerator: capital_expenditure, denominator: revenue}
+  - {id: capex_to_operating_cash_flow, name: Capex / operating cash flow, category: capital_intensity, kind: ratio, unit_kind: ratio, numerator: capital_expenditure, denominator: operating_cash_flow}
+  - {id: liabilities_to_equity, name: Liabilities / equity, category: leverage, kind: ratio, unit_kind: multiple, numerator: total_liabilities, denominator: total_equity}
+  - {id: debt_to_equity, name: Debt / equity, category: leverage, kind: ratio, unit_kind: multiple, numerator: total_debt, denominator: total_equity}
+  - {id: net_debt, name: Net debt, category: leverage, kind: expression, unit_kind: currency, formula: total_debt - cash_and_equivalents}
+  - id: degree_of_operating_leverage
+    name: Degree of operating leverage
+    description: Operating income growth divided by revenue growth. Unstable when revenue growth is near zero; use the median.
+    category: operating
+    kind: elasticity
+    unit_kind: multiple
+    of: operating_income
+    relative_to: revenue
+
+charts:
+  - {id: revenue, title: Revenue, kind: bar, series: [revenue], format: currency}
+  - {id: growth, title: Year-on-year growth, kind: line, series: [revenue_growth, net_income_growth], format: percent}
+  - {id: margins, title: Margins, kind: line, series: [gross_margin, operating_margin, net_margin], format: percent}
+  - {id: returns, title: Returns on capital, kind: line, series: [return_on_average_equity, roic], format: percent}
+  - {id: cash_flow, title: Cash flow, kind: bar, series: [operating_cash_flow, free_cash_flow], format: currency}
+  - {id: leverage, title: Leverage, kind: line, series: [liabilities_to_equity, debt_to_equity], format: multiple}
 
 drivers:
   - id: revenue_trajectory

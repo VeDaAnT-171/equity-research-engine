@@ -86,11 +86,12 @@ def test_non_contiguous_periods_rejected(generic):
 
 def test_framework_derivation_fills_gaps_with_lineage(generic):
     rev, cogs = reported("revenue", 1000, fy(2025)), reported("cost_of_revenue", 600, fy(2025))
-    _, derived, _ = run([rev, cogs], generic)
+    ocf, capex = reported("operating_cash_flow", 300, fy(2025)), reported("capital_expenditure", 120, fy(2025))
+    _, derived, _ = run([rev, cogs, ocf, capex], generic)
     gp = derived_value(derived, "gross_profit", "FY2025")
-    gm = derived_value(derived, "gross_margin", "FY2025")
+    fcf = derived_value(derived, "free_cash_flow", "FY2025")
     assert gp.value == Decimal(400) and set(gp.inputs) == {rev.fact_id, cogs.fact_id}
-    assert gm.value == Decimal("0.4") and gm.unit == "pure" and gp.fact_id in gm.inputs  # chains through derived
+    assert fcf.value == Decimal(180) and fcf.formula == "operating_cash_flow - capital_expenditure"
 
 
 def test_reported_wins_and_is_checked_against_definition(generic):
@@ -103,17 +104,16 @@ def test_reported_wins_and_is_checked_against_definition(generic):
     assert any(i.check == "derivation:gross_profit" for i in report.issues)
 
 
-def test_mixed_currency_and_division_by_zero_are_counted(generic):
+def test_mixed_currency_and_division_by_zero_are_counted(generic, banks):
     _, derived, report = run([reported("revenue", 1000, fy(2025)), reported("cost_of_revenue", 600, fy(2025), unit="EUR")], generic)
     assert not [f for f in derived if f.metric_id == "gross_profit"]
     assert report.derivations["derivation_mixed_currency:gross_profit"] == 1
-    _, _, report = run([reported("operating_income", 10, fy(2025)), reported("revenue", 0, fy(2025))], generic)
-    assert report.derivations["derivation_division_by_zero:operating_margin"] == 1
+    _, _, report = run([reported("net_interest_income", 10, fy(2025)), reported("average_interest_earning_assets", 0, fy(2025))], banks)
+    assert report.derivations["derivation_division_by_zero:net_interest_margin"] == 1
 
 
-def test_duration_ratio_uses_period_end_balance(banks):
-    provision = reported("provision_for_credit_losses", 30, duration(2025, "Q1", "2025-01-01", "2025-03-31"))
-    loans = reported("loans", 1000, instant(2025, "Q1", "2025-03-31"))
-    _, derived, _ = run([provision, loans], banks)
-    rate = derived_value(derived, "credit_loss_rate", "Q1-2025")
-    assert rate.value == Decimal("0.03") and "not annualised" in rate.notes
+def test_interim_ratio_is_labelled_not_annualised(banks):
+    q1 = duration(2025, "Q1", "2025-01-01", "2025-03-31")
+    _, derived, _ = run([reported("net_interest_income", 30, q1), reported("average_interest_earning_assets", 1000, q1)], banks)
+    nim = derived_value(derived, "net_interest_margin", "Q1-2025")
+    assert nim.value == Decimal("0.03") and "not annualised" in nim.notes

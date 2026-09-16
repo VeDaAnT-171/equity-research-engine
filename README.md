@@ -3,10 +3,12 @@
 A company-agnostic engine that turns primary company disclosures into reproducible, auditable equity research.
 The company is an **input** (a YAML file). The engine is the product.
 
-> **Status: Phase 3 of 8 — data quality.** SEC XBRL data is retrieved, identity-checked, mapped onto industry
-> frameworks, completed with derived periods and metrics (each with lineage), and tested against accounting
-> identities and time-series rules. Historical analysis, forecasting, valuation and reporting are **not built yet**.
-> `make research` fails loudly until they are.
+> **Status: Phase 4 of 8 — historical analysis.** SEC XBRL data is retrieved, identity-checked, completed with
+> derived facts, tested against accounting identities, and turned into framework-defined analytics, descriptive
+> statistics and charts, all traceable from chart to source URL. Forecasting, valuation and reporting are
+> **not built yet**. `make research` fails loudly until they are.
+>
+> All tests run on **synthetic** SEC-format data. The engine has not yet been run against a live filing.
 
 ## What works today
 
@@ -23,6 +25,8 @@ The company is an **input** (a YAML file). The engine is the product.
 | XBRL extraction | `extraction/xbrl.py` | Framework decides concepts; comparatives deduplicated; restatements kept side by side; every skip counted |
 | Derived facts | `quality/derive.py` | Q2/Q3/Q4/H2 from year-to-date values; framework formulas fill gaps; reported values always win and are cross-checked |
 | Data-quality checks | `quality/checks.py`, `industry_frameworks/*.yaml` | Accounting identities as framework data; sign, scale-break, outlier and gap rules with stated thresholds; missing inputs reported as "not evaluable", never as passes |
+| Historical analytics | `analysis/engine.py`, `industry_frameworks/*.yaml` | Growth, margins, returns, leverage, efficiency, operating leverage defined as data; balance-sheet denominators use an explicit basis (average / opening); facts failing error checks are excluded, warnings carried as flags |
+| Charts and summaries | `analysis/charts.py`, `analysis/summary.py` | Framework-defined SVG/PNG charts marking derived and flagged points; descriptive statistics labelled as model output |
 | Company-agnostic guard | `tests/test_company_agnostic.py` | CI fails if any configured company's ticker/name/CIK appears in engine code or frameworks |
 
 ## Quick start
@@ -36,7 +40,8 @@ cp .env.example .env   # set SEC_USER_AGENT="Your Name you@example.com"
 make ingest CONFIG=companies/nyse-jpm/config.yaml
 make ingest CONFIG=companies/nyse-jpm/config.yaml ARGS=--refresh   # re-download; changed filings become new versions
 make quality CONFIG=companies/nyse-jpm/config.yaml                  # QARGS=--strict to fail on error-severity issues
-make data CONFIG=companies/nyse-jpm/config.yaml                     # ingest + quality
+make analyze CONFIG=companies/nyse-jpm/config.yaml                  # historical analytics, charts, Parquet
+make data CONFIG=companies/nyse-jpm/config.yaml                     # ingest + quality + analyze
 ```
 
 `make ingest` writes to `companies/<id>/output/`:
@@ -60,6 +65,17 @@ make data CONFIG=companies/nyse-jpm/config.yaml                     # ingest + q
 | `financials_annual.csv`, `financials_interim.csv` | Wide views including derived periods and metrics |
 | `quality_manifest.json` | Versions, issue counts, hash of the ingestion manifest it was built from |
 
+`make analyze` adds:
+
+| File | Contents |
+|---|---|
+| `historical_financials.parquet` | Current reported and derived facts, long format, with lineage columns |
+| `historical_analytics.parquet`, `historical_analytics.csv` | Analytic values by fiscal year with basis, formula, quality flags and input ids |
+| `historical_summary.json` | Descriptive statistics per analytic, counted reasons for every value not computed, chart records |
+| `historical_analysis.md` | Tables by category (growth, profitability, returns, ...), labelled MODEL OUTPUT, no interpretation |
+| `charts/*.svg`, `charts/*.png`, `charts/index.json` | Framework-defined charts; hollow markers / hatched bars = derived, † = flagged input |
+| `analysis_manifest.json` | Versions, framework hash, hashes of the ingestion and quality manifests used |
+
 Add a company: create `companies/<exchange>-<ticker>/config.yaml`. No code changes.
 
 ## Design in one paragraph
@@ -78,7 +94,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/adr/](docs/adr/).
 1. **Foundation** — config, schemas, frameworks, registry, lineage ✅
 2. **Structured ingestion** — SEC companyfacts/submissions adapters, cached downloader, SIC framework selection, XBRL → canonical facts ✅
 3. **Data quality** — interim and framework derivations with lineage, accounting identities, sign/scale/outlier/gap checks, `data_quality_report.html` ✅
-4. **Historical analysis** — framework-driven ratios, charts, reconciliation flags
+4. **Historical analysis** — framework-defined analytics with explicit balance bases, quality gating, descriptive statistics, charts, Parquet ✅
 5. **Forecast** — driver graph evaluation, assumption registry, scenarios
 6. **Valuation + reverse valuation** — DCF/FCFF, residual income, multiples; solve for market-implied drivers
 7. **Research output** — HTML/PDF report; thesis, catalysts, falsifiers from analyst YAML, quantified by the engine
@@ -91,7 +107,10 @@ Later: PDF/HTML KPI extraction, ESEF adapter, dashboard, event studies.
 - Structured ingestion covers SEC filers only (US domestic plus 20-F/40-F filers that tag in XBRL). ESEF is not implemented.
 - Balance-sheet identity failures are warnings, not errors: equity tags excluding non-controlling interests break it legitimately. Adding an NCI metric would let the check separate real errors from that pattern.
 - The rounding tolerance infers presentation units from trailing zeros. Filers that tag unrounded values get a tight tolerance; that is conservative but can flag trivially small differences.
-- Derived ratios use period-end balances, not averages (e.g. ROE = net income / closing equity). Averaging belongs to historical analysis.
+- Analysis is annual only. Quarterly and trailing-twelve-month analytics are not implemented.
+- Segment analysis is not available: SEC companyfacts has no segment dimensions; it needs XBRL instance documents.
+- Cyclicality is described by the company's own growth volatility and drawdowns, not measured against macro data (no FRED adapter yet).
+- ROIC depends on `total_debt`, whose XBRL tag coverage varies widely by filer.
 - Outlier and scale rules need history: fewer than six fiscal years makes the outlier check "not evaluable".
 - Framework XBRL concept lists are candidates. Each run's extraction report shows which tagged metrics had no data for that filer.
 - Tests use synthetic SEC-format fixtures. The format follows SEC documentation, but a live run against a real filer is the first check against production payloads.

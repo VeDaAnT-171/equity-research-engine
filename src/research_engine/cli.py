@@ -13,6 +13,7 @@ from .ingestion import HttpFetcher, load_env_file
 from .ingestion.http import require_contact_user_agent
 from .pipeline import run_ingestion
 from .pipeline.ingest import requires_sec_access
+from .pipeline.analysis import run_analysis_stage
 from .pipeline.quality import run_quality_stage
 from .versioning import version_stamp
 
@@ -130,9 +131,28 @@ def _cmd_quality(args: argparse.Namespace) -> int:
     return 4 if args.strict and counts["error"] else 0
 
 
+def _cmd_analyze(args: argparse.Namespace) -> int:
+    try:
+        config = load_project_config(args.config)
+        registry = FrameworkRegistry(args.frameworks)
+        workspace = args.workspace or args.config.resolve().parent
+        result = run_analysis_stage(config, workspace=workspace, frameworks=registry)
+    except ResearchEngineError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    rendered = [c for c in result.charts if not c.skipped]
+    print(f"historical analysis for {config.company_id} -> {result.output_dir / 'historical_analysis.md'}")
+    print(f"  analytics: {len(result.analysis.values)} values across {len(result.summaries)} analytics, "
+          f"FY{result.analysis.fiscal_years[0] if result.analysis.fiscal_years else '-'}"
+          f"-FY{result.analysis.fiscal_years[-1] if result.analysis.fiscal_years else '-'}")
+    print(f"  not computed: {sum(result.analysis.not_computed.values())} analytic-years (reasons in historical_summary.json)")
+    print(f"  charts:    {len(rendered)} rendered, {len(result.charts) - len(rendered)} skipped")
+    return 0
+
+
 def _cmd_research(args: argparse.Namespace) -> int:
     print(
-        "error: the full research pipeline is not implemented yet. Implemented stages: `validate`, `ingest`, `quality`.",
+        "error: the full research pipeline is not implemented yet. Implemented stages: `validate`, `ingest`, `quality`, `analyze`.",
         file=sys.stderr,
     )
     return 2
@@ -167,6 +187,12 @@ def main(argv: list[str] | None = None) -> int:
     p_quality.add_argument("--workspace", type=Path, default=None, help="defaults to the config file's directory")
     p_quality.add_argument("--strict", action="store_true", help="exit with status 4 if any error-severity issue is found")
     p_quality.set_defaults(func=_cmd_quality)
+
+    p_analyze = sub.add_parser("analyze", help="historical analytics, summaries, charts and Parquet datasets")
+    p_analyze.add_argument("--config", required=True, type=Path)
+    p_analyze.add_argument("--frameworks", type=Path, default=_default_frameworks())
+    p_analyze.add_argument("--workspace", type=Path, default=None, help="defaults to the config file's directory")
+    p_analyze.set_defaults(func=_cmd_analyze)
 
     p_research = sub.add_parser("research", help="run the full pipeline (not yet implemented)")
     p_research.add_argument("--config", required=True, type=Path)

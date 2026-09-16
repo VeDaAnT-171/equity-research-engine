@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import yaml
@@ -23,6 +24,8 @@ def _merge(parent: IndustryFramework, child: IndustryFramework) -> IndustryFrame
         (set(child.remove_metrics) - parent.metric_ids)
         | (set(child.remove_drivers) - {d.id for d in parent.drivers})
         | (set(child.remove_checks) - {c.id for c in parent.checks})
+        | (set(child.remove_analytics) - parent.analytic_ids)
+        | (set(child.remove_charts) - {c.id for c in parent.charts})
     )
     if unknown_removals:
         raise FrameworkError(f"{child.name}: cannot remove items not defined by parent: {sorted(unknown_removals)}")
@@ -41,9 +44,16 @@ def _merge(parent: IndustryFramework, child: IndustryFramework) -> IndustryFrame
         metrics=_merge_by_id(parent.metrics, child.metrics, set(child.remove_metrics)),
         drivers=_merge_by_id(parent.drivers, child.drivers, set(child.remove_drivers)),
         checks=_merge_by_id(parent.checks, child.checks, set(child.remove_checks)),
+        analytics=_merge_by_id(parent.analytics, child.analytics, set(child.remove_analytics)),
+        charts=_merge_by_id(parent.charts, child.charts, set(child.remove_charts)),
         valuation=ValuationPolicy(preferred=preferred, excluded=excluded),
         report_sections=child.report_sections or parent.report_sections,
     )
+
+
+def framework_fingerprint(framework: IndustryFramework) -> str:
+    """Hash of the resolved framework. Stages compare it to detect frameworks edited between runs."""
+    return hashlib.sha256(framework.model_dump_json().encode()).hexdigest()
 
 
 class FrameworkRegistry:
@@ -92,7 +102,8 @@ class FrameworkRegistry:
             chain.append(current)
             current = self._raw[current].extends
         resolved = self._raw[chain[-1]]
-        if resolved.remove_metrics or resolved.remove_drivers or resolved.remove_checks:
+        if any((resolved.remove_metrics, resolved.remove_drivers, resolved.remove_checks,
+                resolved.remove_analytics, resolved.remove_charts)):
             raise FrameworkError(f"{resolved.name}: a root framework cannot remove inherited items")
         for child in reversed(chain[:-1]):
             try:

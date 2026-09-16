@@ -11,7 +11,7 @@ from ..calendar import FiscalCalendar
 from ..classification import FrameworkSelection, select_framework
 from ..errors import ConfigError, ExtractionError, FetchError, RegistryError
 from ..extraction import ExtractionReport, extract_xbrl_facts
-from ..frameworks import FrameworkRegistry
+from ..frameworks import FrameworkRegistry, framework_fingerprint
 from ..ingestion.http import Fetcher
 from ..lineage import LineageGraph
 from ..registry import DocumentRegistry
@@ -43,6 +43,7 @@ class IngestionResult:
     facts: list[FinancialFact] = field(default_factory=list)
     extraction: Optional[ExtractionReport] = None
     warnings: list[str] = field(default_factory=list)
+    framework_sha256: Optional[str] = None
 
     @property
     def failures(self) -> list[DocumentOutcome]:
@@ -178,6 +179,7 @@ def run_ingestion(
 
     result.framework = select_framework(config, result.profile, frameworks)
     framework = frameworks.get(result.framework.name)
+    result.framework_sha256 = framework_fingerprint(framework)
 
     # Facts
     if companyfacts is not None:

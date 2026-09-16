@@ -151,3 +151,66 @@ def test_checks_inherit_and_can_be_removed(scratch, frameworks_dir):
     reg = FrameworkRegistry(scratch)
     assert {c.id for c in reg.get("child").checks} == {"cash_flow_statement_sum", "cash_roll_forward"}
     assert {c.id for c in FrameworkRegistry(frameworks_dir).get("banks").checks} >= {"balance_sheet_identity"}
+
+
+def test_flow_to_balance_derivation_rejected(scratch):
+    add(scratch, "bad", """
+        name: bad
+        display_name: Bad
+        extends: generic
+        metrics:
+          - {id: roe_naive, name: ROE, unit_kind: ratio, statement: operating, period_type: duration, derivation: net_income / total_equity}
+    """)
+    with pytest.raises(FrameworkError, match="explicit balance basis"):
+        FrameworkRegistry(scratch).get("bad")
+
+
+@pytest.mark.parametrize("analytic, fragment", [
+    ("{id: x, name: X, category: growth, kind: growth, unit_kind: ratio}", "requires \\['metric'\\]"),
+    ("{id: x, name: X, category: returns, kind: ratio, unit_kind: ratio, numerator: net_income, denominator: revenue, denominator_basis: average}", "needs a balance-sheet"),
+    ("{id: x, name: X, category: growth, kind: growth, unit_kind: currency, metric: revenue}", "growth is a ratio"),
+    ("{id: x, name: X, category: growth, kind: level, unit_kind: ratio, metric: made_up}", "unknown metrics or analytics"),
+    ("{id: revenue, name: X, category: growth, kind: level, unit_kind: ratio, metric: revenue}", "collide"),
+])
+def test_analytic_validation(scratch, analytic, fragment):
+    add(scratch, "bad", f"""
+        name: bad
+        display_name: Bad
+        extends: generic
+        analytics:
+          - {analytic}
+    """)
+    with pytest.raises(FrameworkError, match=fragment):
+        FrameworkRegistry(scratch).get("bad")
+
+
+def test_analytic_cycle_and_chart_references(scratch):
+    add(scratch, "cyclic", """
+        name: cyclic
+        display_name: Cyclic
+        extends: generic
+        analytics:
+          - {id: a1, name: A, category: operating, kind: expression, unit_kind: ratio, formula: a2 * 2}
+          - {id: a2, name: B, category: operating, kind: expression, unit_kind: ratio, formula: a1 / 2}
+    """)
+    add(scratch, "badchart", """
+        name: badchart
+        display_name: Bad chart
+        extends: generic
+        charts:
+          - {id: c, title: C, kind: line, series: [nowhere], format: percent}
+    """)
+    reg = FrameworkRegistry(scratch)
+    with pytest.raises(FrameworkError, match="circular"):
+        reg.get("cyclic")
+    with pytest.raises(FrameworkError, match="unknown series"):
+        reg.get("badchart")
+
+
+def test_bank_analytics_replace_industrial_ones(frameworks_dir):
+    banks = FrameworkRegistry(frameworks_dir).get("banks")
+    ids = banks.analytic_ids
+    assert {"rotce", "credit_loss_rate", "efficiency_ratio", "return_on_average_equity"} <= ids
+    assert not {"roic", "gross_margin", "degree_of_operating_leverage", "net_debt"} & ids
+    assert banks.analytic("credit_loss_rate").denominator_basis == "average"
+    assert {c.id for c in banks.charts} >= {"revenue", "bank_returns"} and "margins" not in {c.id for c in banks.charts}
