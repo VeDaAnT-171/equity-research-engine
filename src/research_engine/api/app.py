@@ -13,10 +13,9 @@ from typing import Any, Optional
 
 from ..errors import ResearchEngineError
 from ..versioning import version_stamp
+from . import models as m
 from . import repository as repo
-from .repository import (
-    Repository, StageNotRun, UnknownChart, UnknownCompany, UnknownNode,
-)
+from .repository import Repository, StageNotRun, UnknownChart, UnknownCompany, UnknownNode
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -40,9 +39,15 @@ def create_app(companies_root: Path):
     store = Repository(Path(companies_root))
     app = FastAPI(
         title="Equity Research Engine",
-        description="Read-only API over pipeline outputs. Every value is traceable to a filing.",
+        description=(
+            "Read-only API over pipeline outputs. Every value returned was written by a pipeline "
+            "stage; nothing here is computed on request, so anything the dashboard shows can be "
+            "checked against the files in a company's `output/` directory. A stage that has not "
+            "been run returns 409 naming the command to run, never an empty result."
+        ),
         version=version_stamp()["engine_version"],
         docs_url="/api/docs",
+        redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
     )
 
@@ -66,12 +71,12 @@ def create_app(companies_root: Path):
 
     # ---- metadata -------------------------------------------------------------------------
 
-    @app.get("/api/health", tags=["meta"])
-    def health() -> dict:
+    @app.get("/api/health", tags=["meta"], response_model=m.Health)
+    def health():
         return {"status": "ok", **version_stamp(), "companies_root": str(store.root)}
 
-    @app.get("/api/companies", tags=["companies"])
-    def list_companies() -> list[dict]:
+    @app.get("/api/companies", tags=["companies"], response_model=list[m.CompanySummary])
+    def list_companies():
         return [
             {
                 "company_id": ws.company_id, "name": ws.config.company.name,
@@ -81,38 +86,48 @@ def create_app(companies_root: Path):
             for ws in sorted(store, key=lambda w: w.company_id)
         ]
 
-    @app.get("/api/companies/{company_id}", tags=["companies"])
-    def overview(company_id: str) -> dict:
+    @app.get("/api/companies/{company_id}", tags=["companies"], response_model=m.Overview)
+    def overview(company_id: str):
         return guarded(repo.overview_of, company(company_id))
 
-    @app.get("/api/companies/{company_id}/documents", tags=["companies"])
-    def documents(company_id: str) -> list[dict]:
+    @app.get("/api/companies/{company_id}/documents", tags=["companies"],
+             response_model=list[m.Document])
+    def documents(company_id: str):
         return guarded(repo.documents_of, company(company_id))
 
     # ---- analysis -------------------------------------------------------------------------
 
-    @app.get("/api/companies/{company_id}/analytics", tags=["analysis"])
-    def analytics(company_id: str) -> dict:
+    @app.get("/api/companies/{company_id}/analytics", tags=["analysis"], response_model=m.Analytics)
+    def analytics(company_id: str):
         return guarded(repo.analytics_of, company(company_id))
 
-    @app.get("/api/companies/{company_id}/quality", tags=["analysis"])
-    def quality(company_id: str) -> dict:
+    @app.get("/api/companies/{company_id}/quality", tags=["analysis"], response_model=m.Quality)
+    def quality(company_id: str):
         return guarded(repo.quality_of, company(company_id))
 
-    @app.get("/api/companies/{company_id}/charts", tags=["analysis"])
-    def charts(company_id: str) -> list[dict]:
+    @app.get("/api/companies/{company_id}/coverage", tags=["analysis"])
+    def coverage(company_id: str) -> dict:
+        return guarded(repo.coverage_of, company(company_id))
+
+    @app.get("/api/companies/{company_id}/charts", tags=["analysis"], response_model=list[m.Chart])
+    def charts(company_id: str):
         return guarded(lambda ws: ws.chart_index(), company(company_id))
+
+    @app.get("/api/companies/{company_id}/charts/{chart_id}/data", tags=["analysis"],
+             response_model=m.ChartData,
+             summary="A chart's values as a table (the accessible equivalent of the image)")
+    def chart_table(company_id: str, chart_id: str):
+        return guarded(repo.chart_data, company(company_id), chart_id)
 
     @app.get("/api/companies/{company_id}/charts/{chart_id}.{fmt}", tags=["analysis"])
     def chart(company_id: str, chart_id: str, fmt: str):
         path = guarded(lambda ws: ws.chart_file(chart_id, fmt), company(company_id))
-        media = "image/svg+xml" if fmt == "svg" else "image/png"
-        return FileResponse(path, media_type=media)
+        return FileResponse(path, media_type="image/svg+xml" if fmt == "svg" else "image/png")
 
     # ---- forecast -------------------------------------------------------------------------
 
-    @app.get("/api/companies/{company_id}/forecast", tags=["forecast"])
-    def forecast(company_id: str, scenario: Optional[str] = Query(default=None)) -> dict:
+    @app.get("/api/companies/{company_id}/forecast", tags=["forecast"], response_model=m.Forecast)
+    def forecast(company_id: str, scenario: Optional[str] = Query(default=None)):
         data = guarded(repo.forecast_of, company(company_id))
         if scenario is not None:
             matched = [s for s in data["scenarios"] if s["id"] == scenario]
@@ -121,14 +136,31 @@ def create_app(companies_root: Path):
             data = {**data, "scenarios": matched}
         return data
 
-    @app.get("/api/companies/{company_id}/assumptions", tags=["forecast"])
-    def assumptions(company_id: str) -> dict:
+    @app.get("/api/companies/{company_id}/forecast/charts", tags=["forecast"])
+    def forecast_charts(company_id: str) -> list[dict]:
+        return guarded(lambda ws: ws.forecast_chart_index(), company(company_id))
+
+    @app.get("/api/companies/{company_id}/forecast/charts/{chart_id}/data", tags=["forecast"],
+             response_model=m.ChartData)
+    def forecast_chart_table(company_id: str, chart_id: str):
+        return guarded(repo.forecast_chart_data, company(company_id), chart_id)
+
+    @app.get("/api/companies/{company_id}/forecast/charts/{chart_id}.{fmt}", tags=["forecast"])
+    def forecast_chart(company_id: str, chart_id: str, fmt: str):
+        path = guarded(lambda ws: ws.forecast_chart_file(chart_id, fmt), company(company_id))
+        return FileResponse(path, media_type="image/svg+xml" if fmt == "svg" else "image/png")
+
+    @app.get("/api/companies/{company_id}/assumptions", tags=["forecast"],
+             response_model=m.Assumptions)
+    def assumptions(company_id: str):
         return guarded(repo.assumptions_of, company(company_id))
 
     # ---- lineage --------------------------------------------------------------------------
 
-    @app.get("/api/companies/{company_id}/lineage/{node_id}", tags=["lineage"])
-    def lineage(company_id: str, node_id: str) -> dict:
+    @app.get("/api/companies/{company_id}/lineage/{node_id}", tags=["lineage"],
+             response_model=m.Lineage,
+             summary="Every path from a value up to the filings it rests on")
+    def lineage(company_id: str, node_id: str):
         return guarded(repo.trace, company(company_id), node_id)
 
     # ---- reports as written ---------------------------------------------------------------

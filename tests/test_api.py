@@ -58,7 +58,7 @@ def bare(tmp_path, sec_bank_config_path):
 
 def test_health_reports_engine_version(client):
     body = client.get("/api/health").json()
-    assert body["status"] == "ok" and body["engine_version"] == "0.6.0"
+    assert body["status"] == "ok" and body["engine_version"] == "0.7.0"
 
 
 def test_companies_are_discovered_from_configs(client):
@@ -202,3 +202,63 @@ def test_empty_workspace_is_not_an_error(tmp_path):
     c = TestClient(create_app(tmp_path / "empty"))
     assert c.get("/api/companies").json() == []
     assert c.get("/api/health").status_code == 200
+
+
+# ---- forecast charts and the accessible fallbacks ---------------------------------------------
+
+def test_forecast_charts_are_listed_and_served(client):
+    charts = client.get("/api/companies/nyse-exbk/forecast/charts").json()
+    assert charts, "at least one projected metric should be charted"
+    assert all(not c.get("skipped") for c in charts), "skipped charts must not be offered"
+    r = client.get(f"/api/companies/nyse-exbk/forecast/charts/{charts[0]['chart_id']}.svg")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg")
+
+
+def test_forecast_chart_ids_cannot_escape_their_directory(client):
+    for attempt in ("../../manifest", "..%2f..%2fforecast", "nope"):
+        assert client.get(
+            f"/api/companies/nyse-exbk/forecast/charts/{attempt}.svg").status_code in (404, 400)
+
+
+def test_every_chart_has_a_data_table_with_the_same_values(client):
+    """A picture of a line is useless to a screen reader; the table is the accessible equivalent."""
+    for c in client.get("/api/companies/nyse-exbk/charts").json():
+        d = client.get(f"/api/companies/nyse-exbk/charts/{c['chart_id']}/data").json()
+        assert d["columns"][0] == "series"
+        assert [col for col in d["columns"] if col.startswith("FY")] == [f"FY{y}" for y in c["years"]]
+        assert d["rows"] and all("series" in row for row in d["rows"])
+
+
+def test_forecast_chart_table_matches_the_forecast_rows(client):
+    charts = client.get("/api/companies/nyse-exbk/forecast/charts").json()
+    chart = charts[0]
+    table = client.get(
+        f"/api/companies/nyse-exbk/forecast/charts/{chart['chart_id']}/data").json()
+    forecast = client.get("/api/companies/nyse-exbk/forecast").json()
+    metric = chart["metric_id"]
+    for row in table["rows"]:
+        scenario = next(s for s in forecast["scenarios"] if s["id"] == row["series"])
+        served = next(m for m in scenario["metrics"] if m["metric_id"] == metric)
+        for point in served["points"]:
+            assert row[f"FY{point['fiscal_year']}"] == point["value"]
+
+
+def test_chart_data_for_an_unknown_chart_is_404(client):
+    assert client.get("/api/companies/nyse-exbk/charts/nope/data").status_code == 404
+    assert client.get("/api/companies/nyse-exbk/forecast/charts/nope/data").status_code == 404
+
+
+def test_coverage_matrix_is_served(client):
+    body = client.get("/api/companies/nyse-exbk/coverage").json()
+    assert body["framework"] == "banks" and body["coverage"] is not None
+
+
+# ---- the schema is described, not left as a bare dict -----------------------------------------
+
+def test_openapi_documents_real_response_shapes(client):
+    spec = client.get("/api/openapi.json").json()
+    assert len(spec["components"]["schemas"]) > 20
+    analytics = spec["paths"]["/api/companies/{company_id}/analytics"]["get"]
+    ref = analytics["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    assert ref.endswith("/Analytics")
+    assert "value_id" in json.dumps(spec["components"]["schemas"]["AnalyticPoint"])

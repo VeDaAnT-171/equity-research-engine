@@ -12,6 +12,7 @@ from pathlib import Path
 from ..errors import ConfigError, ExtractionError
 from ..extraction import current_facts
 from ..forecast import load_assumptions_file, run_forecast
+from ..forecast.charts import ForecastChartRecord, render_forecast_charts
 from ..forecast.engine import ForecastResult
 from ..forecast.report import render_markdown
 from ..frameworks import FrameworkRegistry, framework_fingerprint
@@ -35,6 +36,7 @@ class ForecastStageResult:
     forecast: ForecastResult
     assumptions_path: Path
     assumptions_file_present: bool
+    charts: list[ForecastChartRecord] = None
 
 
 def _forecast_schema():
@@ -138,6 +140,13 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
             for ids in (chart.get("series") or {}).values():
                 for parent in ids:
                     lineage.link(node, parent)
+    versions = version_stamp()
+    forecast_charts = render_forecast_charts(
+        result, framework, out / "forecast_charts",
+        company_label=f"{config.company.name} ({config.company.ticker})",
+        engine_version=versions["engine_version"],
+    )
+
     for a in result.assumptions.all:
         node = f"assumption:{a.assumption_id}:{a.type.value}"
         lineage.add_node(LineageNode(node, NodeKind.ASSUMPTION, a.assumption_id,
@@ -153,11 +162,19 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
             lineage.link(v.value_id, parent)
         for aid, atype in zip(v.assumption_ids, v.assumption_types):
             lineage.link(v.value_id, f"assumption:{aid}:{atype}")
+    for chart in forecast_charts:
+        if chart.skipped:
+            continue
+        node = f"chart:{chart.chart_id}"
+        lineage.add_node(LineageNode(node, NodeKind.CHART, chart.title,
+                                     {"files": ",".join(chart.files)}))
+        for ids in chart.series.values():
+            for parent in ids:
+                lineage.link(node, parent)
     broken = lineage.broken_nodes()
     if broken:
         raise ExtractionError(f"forecast lineage check failed for {len(broken)} nodes, e.g. {broken[0].node_id}")
 
-    versions = version_stamp()
     years = list(result.forecast_years)
     _write_parquet(out / "forecast.parquet", [_row(v) for v in result.values], _forecast_schema())
 
@@ -194,6 +211,8 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
         "demoted_derivations": dict(sorted(result.graph.demoted.items())),
     }, indent=2, default=str))
 
+    _atomic_write(out / "forecast_charts" / "index.json",
+                  json.dumps([c.to_dict() for c in forecast_charts], indent=2))
     _atomic_write(out / "forecast.md", render_markdown(company_id=config.company_id, framework=framework,
                                                        result=result, versions=versions))
     _atomic_write(out / "lineage.json", json.dumps(lineage.to_dict(), indent=1, default=str))
@@ -209,5 +228,7 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
         "assumptions_unseeded": len(result.unseeded),
         "forecast_values": len(result.values),
         "not_projected": sum(result.not_projected.values()),
+        "charts_rendered": sum(1 for c in forecast_charts if not c.skipped),
     }, indent=2))
-    return ForecastStageResult(out, result, assumptions_path, assumptions_path.is_file())
+    return ForecastStageResult(out, result, assumptions_path, assumptions_path.is_file(),
+                               charts=forecast_charts)

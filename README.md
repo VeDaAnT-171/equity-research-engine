@@ -33,7 +33,8 @@ The company is an **input** (a YAML file). The engine is the product.
 | Assumption registry | `forecast/assumptions.py`, `schemas/assumption.py` | Engine seeds `historical` assumptions from verified facts with lineage; analyst supplies guidance/consensus/judgement; guidance needs a cited document and analysts cannot claim `historical` |
 | Scenario forecast | `forecast/engine.py` | Fixed precedence ladder, per-year overrides, independent scenario projections; unset assumptions refuse to project rather than fall back |
 | Read-only API | `api/repository.py`, `api/app.py` | Serves only what the pipeline wrote; a stage that has not run returns 409 with the command to run, never an empty result that looks like a clean bill of health |
-| Dashboard | `api/static/` | Overview, analytics, scenario forecast, assumption ladder and quality report, with any figure clickable through to the filing it came from. No build step, no JS dependencies |
+| Forecast charts | `forecast/charts.py` | Solid to the last reported year, dashed after it; scenarios separated by line style and an end label, never by hue alone; a metric with no projection is skipped rather than drawn flat |
+| Dashboard | `api/static/` | Overview, analytics, scenario forecast, assumption ladder and quality report, with any figure clickable through to the filing it came from. Keyboard-operable throughout, every chart has a data table, no hover-only information. No build step, no JS dependencies |
 | Company-agnostic guard | `tests/test_company_agnostic.py` | CI fails if any configured company's ticker/name/CIK appears in engine code or frameworks |
 
 ## Quick start
@@ -121,6 +122,25 @@ analyst would open directly. A stage that has not been run returns HTTP 409 nami
 run, because a dashboard reporting zero data-quality issues for a company that was never checked is
 worse than one that shows nothing.
 
+### Accessibility
+
+The dashboard is built against WCAG 2.1 AA and verified with axe-core in CI-style browser runs
+(zero violations across all five views), plus a keyboard-only walkthrough:
+
+- Every control is a real button, link or select, reachable and operable from the keyboard. The
+  tablist supports arrow keys, Home and End; the lineage dialog traps focus while open and returns
+  it to the trigger on close.
+- **No information lives only in a hover state.** The `*` and `†` provenance markers are buttons
+  that reveal visible text in a status region, not tooltips.
+- **Every chart has a data table beside it**, served from the same lineage ids the chart plotted,
+  because a picture of a line tells a screen reader nothing.
+- Nothing is encoded by colour alone: severity, projection method and assumption rung all carry
+  text, and scenario lines are separated by dash pattern and a direct label.
+- Loading reserves the space the content will occupy, so arriving data does not shift the layout;
+  status changes are announced once through a single polite live region.
+- Focus is never hidden under the sticky header, targets are at least 24x24 CSS px (44px where a
+  finger is likely), text reflows at any width, and `prefers-reduced-motion` removes all motion.
+
 The server has **no authentication** and binds to localhost. It is local analyst tooling; do not
 expose it.
 
@@ -178,7 +198,9 @@ Later: PDF/HTML KPI extraction, ESEF adapter, event studies.
 - The dashboard is read-only and has no authentication. It cannot run the pipeline, edit assumptions or write
   anything; those are CLI operations, deliberately, so that every change to a company's data is a recorded command.
 - The dashboard renders the charts the engine already produced rather than re-plotting in the browser, so provenance
-  marks (hollow = derived, † = flagged) survive. Forecast scenarios have no charts yet, only tables.
+  marks (hollow = derived, † = flagged) survive.
+- Accessibility is verified automatically (axe-core) and by scripted keyboard walkthrough, not by manual audit with a
+  screen reader. Automated tools catch roughly a third of real barriers; a genuine audit has not been done.
 
 ## Disclaimer
 

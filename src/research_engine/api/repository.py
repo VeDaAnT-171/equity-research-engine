@@ -125,6 +125,30 @@ class CompanyWorkspace:
             return []
         return [c for c in json.loads(path.read_text(encoding="utf-8")) if not c.get("skipped")]
 
+    # ---- forecast charts ------------------------------------------------------------------
+
+    @property
+    def forecast_charts(self) -> Path:
+        return self.output / "forecast_charts"
+
+    def forecast_chart_index(self) -> list[dict]:
+        self.require("forecast")
+        path = self.forecast_charts / "index.json"
+        if not path.is_file():
+            return []
+        return [c for c in json.loads(path.read_text(encoding="utf-8")) if not c.get("skipped")]
+
+    def forecast_chart_file(self, chart_id: str, fmt: str) -> Path:
+        self.require("forecast")
+        if fmt not in ("svg", "png"):
+            raise UnknownChart(chart_id)
+        if chart_id not in {c["chart_id"] for c in self.forecast_chart_index()}:
+            raise UnknownChart(chart_id)
+        path = (self.forecast_charts / f"{chart_id}.{fmt}").resolve()
+        if not path.is_file() or self.forecast_charts.resolve() not in path.parents:
+            raise UnknownChart(chart_id)
+        return path
+
 
 class UnknownChart(ResearchEngineError):
     def __init__(self, chart_id: str):
@@ -305,6 +329,69 @@ def assumptions_of(ws: CompanyWorkspace) -> dict[str, Any]:
 
 def quality_of(ws: CompanyWorkspace) -> dict[str, Any]:
     return ws.json("data_quality_report.json", "quality")
+
+
+def chart_data(ws: CompanyWorkspace, chart_id: str) -> dict[str, Any]:
+    """A chart's numbers as a table.
+
+    The chart guidance this dashboard follows requires every chart to have a non-visual
+    equivalent, and a picture of a line is useless to a screen reader. The chart record already
+    stores the lineage id behind each plotted point, so the table is a join rather than a second
+    computation: the same values, from the same rows, in the same order.
+    """
+    record = next((c for c in ws.chart_index() if c["chart_id"] == chart_id), None)
+    if record is None:
+        raise UnknownChart(chart_id)
+    values: dict[str, tuple[float, Optional[str]]] = {}
+    for row in ws.parquet("historical_financials.parquet", "analyze"):
+        values[row["fact_id"]] = (row["value"], row["currency"])
+    unit_kinds: dict[str, str] = {}
+    for row in ws.parquet("historical_analytics.parquet", "analyze"):
+        values[row["value_id"]] = (row["value"], row["currency"])
+        unit_kinds[row["analytic_id"]] = row["unit_kind"]
+
+    years = record.get("years") or []
+    rows = []
+    for series_id, lineage_ids in (record.get("series") or {}).items():
+        row: dict[str, Any] = {"series": series_id}
+        for year, lineage_id in zip(years, lineage_ids):
+            found = values.get(lineage_id)
+            row[f"FY{year}"] = found[0] if found else None
+        rows.append(row)
+    currency = next((c for v, c in values.values() if c), None)
+    # Analytics declare a unit kind; plain metric series do not, so infer from the currency.
+    declared = next((unit_kinds[s] for s in (record.get("series") or {}) if s in unit_kinds), None)
+    return {
+        "chart_id": chart_id, "title": record["title"],
+        "unit_kind": declared or ("currency" if currency else "number"),
+        "currency": currency,
+        "columns": ["series", *[f"FY{y}" for y in years]],
+        "rows": rows,
+    }
+
+
+def forecast_chart_data(ws: CompanyWorkspace, chart_id: str) -> dict[str, Any]:
+    """A forecast chart's numbers as a table, one row per scenario."""
+    record = next((c for c in ws.forecast_chart_index() if c["chart_id"] == chart_id), None)
+    if record is None:
+        raise UnknownChart(chart_id)
+    years = record.get("years") or []
+    columns = [f"FY{y}" for y in years]
+    table = record.get("table") or {}
+    rows = [{"series": scenario, **{col: table.get(scenario, {}).get(col) for col in columns},
+             "method": (record.get("methods") or {}).get(scenario, "")}
+            for scenario in record.get("scenarios", [])]
+    return {
+        "chart_id": chart_id, "title": record["title"], "unit_kind": record.get("unit_kind"),
+        "currency": record.get("currency"), "columns": ["series", *columns, "method"], "rows": rows,
+    }
+
+
+def coverage_of(ws: CompanyWorkspace) -> dict[str, Any]:
+    """The annual coverage matrix: which metric-years are reported, derived or absent."""
+    report = ws.json("data_quality_report.json", "quality")
+    return {"company_id": report.get("company_id"), "framework": report.get("framework"),
+            "coverage": report.get("coverage"), "derivations": report.get("derivations")}
 
 
 # ---- lineage -------------------------------------------------------------------------------

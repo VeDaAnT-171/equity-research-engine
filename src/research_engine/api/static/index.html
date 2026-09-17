@@ -4,47 +4,64 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Equity Research Engine</title>
+<meta name="description" content="Read-only dashboard over equity research pipeline outputs. Every figure traces to a filing.">
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#128200;</text></svg>">
 </head>
 <body>
 
+<a class="skip" href="#main">Skip to content</a>
+
 <header class="topbar">
   <div class="brand">
     <span class="mark" aria-hidden="true"></span>
     <div>
-      <div class="title">Equity Research Engine</div>
-      <div class="sub" id="engine-version">&nbsp;</div>
+      <h1 class="title">Equity Research Engine</h1>
+      <p class="sub" id="engine-version">&nbsp;</p>
     </div>
   </div>
 
-  <div class="company-picker">
-    <label for="company" class="sr-only">Company</label>
-    <select id="company" aria-label="Select a company"></select>
-    <div class="stages" id="stages" role="status" aria-label="Pipeline stages"></div>
+  <div class="picker">
+    <label class="field">
+      <span class="field-label">Company</span>
+      <select id="company" aria-describedby="stage-summary"></select>
+    </label>
+    <div class="stages">
+      <p class="field-label" id="stages-label">Pipeline</p>
+      <ul class="stage-list" id="stages" aria-labelledby="stages-label"></ul>
+      <p class="sr-only" id="stage-summary"></p>
+    </div>
   </div>
 </header>
 
-<nav class="tabs" id="tabs" role="tablist">
-  <button role="tab" class="tab active" data-view="overview">Overview</button>
-  <button role="tab" class="tab" data-view="historical">Historical</button>
-  <button role="tab" class="tab" data-view="forecast">Forecast</button>
-  <button role="tab" class="tab" data-view="assumptions">Assumptions</button>
-  <button role="tab" class="tab" data-view="quality">Data quality</button>
+<nav aria-label="Views">
+  <div class="tabs" id="tabs" role="tablist" aria-label="Dashboard views">
+    <button role="tab" class="tab" id="tab-overview"    data-view="overview"    aria-selected="true"  aria-controls="panel" tabindex="0">Overview</button>
+    <button role="tab" class="tab" id="tab-historical"  data-view="historical"  aria-selected="false" aria-controls="panel" tabindex="-1">Historical</button>
+    <button role="tab" class="tab" id="tab-forecast"    data-view="forecast"    aria-selected="false" aria-controls="panel" tabindex="-1">Forecast</button>
+    <button role="tab" class="tab" id="tab-assumptions" data-view="assumptions" aria-selected="false" aria-controls="panel" tabindex="-1">Assumptions</button>
+    <button role="tab" class="tab" id="tab-quality"     data-view="quality"     aria-selected="false" aria-controls="panel" tabindex="-1">Data quality</button>
+  </div>
 </nav>
 
 <main id="main">
-  <div class="empty" id="boot">Loading workspace…</div>
+  <div id="panel" role="tabpanel" aria-labelledby="tab-overview" tabindex="-1" aria-busy="true">
+    <p class="empty">Loading workspace…</p>
+  </div>
 </main>
 
-<div class="drawer" id="drawer" hidden role="dialog" aria-modal="true" aria-labelledby="drawer-title">
-  <div class="drawer-panel">
+<p class="sr-only" id="live" role="status" aria-live="polite"></p>
+
+<div class="drawer" id="drawer" hidden>
+  <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
     <div class="drawer-head">
       <div>
-        <div class="drawer-eyebrow">Lineage</div>
+        <p class="drawer-eyebrow">Lineage</p>
         <h2 id="drawer-title">&nbsp;</h2>
       </div>
-      <button class="close" id="drawer-close" aria-label="Close lineage">&times;</button>
+      <button class="icon-btn" id="drawer-close" type="button">
+        <span aria-hidden="true">&times;</span><span class="sr-only">Close lineage</span>
+      </button>
     </div>
     <div class="drawer-body" id="drawer-body"></div>
   </div>

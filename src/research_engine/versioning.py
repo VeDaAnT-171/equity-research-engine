@@ -1,6 +1,6 @@
 """Version identifiers recorded on every artifact the engine produces."""
 
-ENGINE_VERSION = "0.6.0"
+ENGINE_VERSION = "0.7.0"
 SCHEMA_VERSION = "1"
 PARSER_VERSION = "0.2.0"  # SEC submissions + companyfacts adapters
 

@@ -91,6 +91,9 @@ companies/             one directory per company (data)
 | D31 | The API serves pipeline outputs and computes nothing | A figure on screen that exists in no output file cannot be audited, and two implementations of one ratio eventually disagree | The dashboard can only show what a stage has already written |
 | D32 | A stage that has not run returns 409, not an empty result | Zero issues because the check never ran is indistinguishable from zero issues because it passed | Callers must handle a third state beyond data and error |
 | D33 | The dashboard has no build step and no JS dependencies | A Python research engine that needs npm to show its output is two projects; charts are already rendered server-side with their provenance marks | No component framework, so views are string templates |
+| D34 | Every chart ships with a data table built from the lineage ids it plotted | A chart image is inaccessible and unverifiable; joining on lineage ids means the table cannot drift from the picture | One extra request per chart the reader opens |
+| D35 | Provenance markers are buttons that reveal visible text, not tooltips | Hover-only information excludes keyboard and touch users, and a `title` attribute is invisible to a sighted keyboard user | A marker press changes a status region rather than showing a floating layer |
+| D36 | Forecast scenarios are separated by line style and a direct end label | Colour alone fails for colour-blind readers and in print; the actual/projected boundary is the chart's most important distinction | At most five scenarios read clearly on one chart |
 
 ## Invariants tested
 
@@ -112,3 +115,6 @@ companies/             one directory per company (data)
 - The forecast stage rewrites lineage.json without dropping the chart and analytic chains the analysis stage wrote.
 - Every value the API serves equals the value in the parquet dataset it came from.
 - A chart id cannot escape the charts directory; an unrun stage is a 409 naming the command to run.
+- Every chart's data table carries the same values as the chart, joined on the lineage ids it plotted.
+- A forecast metric with no projection is skipped rather than drawn as a flat continuation of its last actual.
+- The dashboard reports zero axe-core violations (WCAG 2.1 AA plus best practice) on every view.

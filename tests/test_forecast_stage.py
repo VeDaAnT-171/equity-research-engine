@@ -41,7 +41,7 @@ def test_stage_writes_every_artifact(prepared, tmp_path, frameworks):
     manifest = json.loads((out / "forecast_manifest.json").read_text())
     assert manifest["base_year"] == result.forecast.base_year
     assert manifest["assumptions_file"] is None  # none supplied in this fixture
-    assert manifest["engine_version"] == "0.6.0"
+    assert manifest["engine_version"] == "0.7.0"
 
 
 def test_report_labels_model_output_and_shows_the_plan(prepared, tmp_path, frameworks):
