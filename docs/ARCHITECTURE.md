@@ -43,9 +43,10 @@ src/research_engine/
   quality/      derived facts, identity and continuity checks, HTML report
   analysis/     historical analytics, summaries, charts, Markdown tables
   forecast/     driver graph, assumption registry, scenario projection, Markdown tables
+  api/          read-only HTTP API over pipeline outputs, and the dashboard it serves
   classification.py  framework selection (override > SIC > generic)
   expressions.py  whitelisted-AST arithmetic for derivations and driver formulas
-  cli.py        validate | frameworks | ingest | quality | analyze | forecast | research
+  cli.py        validate | frameworks | ingest | quality | analyze | forecast | serve | research
 industry_frameworks/   metrics, drivers, valuation policy per industry (data)
 companies/             one directory per company (data)
 ```
@@ -87,6 +88,9 @@ companies/             one directory per company (data)
 | D28 | Assumption precedence is scenario > analyst > management guidance > consensus > seeded history | A model that cannot disagree with the company cannot produce a variant perception | Guidance is an input to judgement, not an override of it |
 | D29 | The engine seeds `historical` assumptions; the analyst file may not declare them | Only the engine can cite the fact ids that make them checkable | Analysts override at a higher rung instead of editing history |
 | D30 | An unset or unresolvable assumption refuses to project, and the reason is counted per metric-year | A forecast that invents a number it could not compute cannot be reviewed | Sparse history yields visibly incomplete forecasts |
+| D31 | The API serves pipeline outputs and computes nothing | A figure on screen that exists in no output file cannot be audited, and two implementations of one ratio eventually disagree | The dashboard can only show what a stage has already written |
+| D32 | A stage that has not run returns 409, not an empty result | Zero issues because the check never ran is indistinguishable from zero issues because it passed | Callers must handle a third state beyond data and error |
+| D33 | The dashboard has no build step and no JS dependencies | A Python research engine that needs npm to show its output is two projects; charts are already rendered server-side with their provenance marks | No component framework, so views are string templates |
 
 ## Invariants tested
 
@@ -105,3 +109,6 @@ companies/             one directory per company (data)
 - Management guidance and consensus cannot exist without a cited document, and the analyst file cannot declare seeded history.
 - A projected figure traces to the assumption behind it and on to a source URL.
 - An assumption declared without a value stops its dependants rather than falling back to history.
+- The forecast stage rewrites lineage.json without dropping the chart and analytic chains the analysis stage wrote.
+- Every value the API serves equals the value in the parquet dataset it came from.
+- A chart id cannot escape the charts directory; an unrun stage is a 409 naming the command to run.

@@ -178,6 +178,21 @@ def _cmd_forecast(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    from .api import serve
+    try:
+        companies = args.companies.resolve()
+        if not companies.is_dir():
+            raise ResearchEngineError(f"{companies} is not a directory")
+        print(f"serving {companies} on http://{args.host}:{args.port}")
+        print("  read-only dashboard over pipeline outputs; no authentication, do not expose it")
+        serve(companies, host=args.host, port=args.port)
+    except ResearchEngineError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _cmd_research(args: argparse.Namespace) -> int:
     print(
         "error: the full research pipeline is not implemented yet. Implemented stages: `validate`, `ingest`, "
@@ -228,6 +243,13 @@ def main(argv: list[str] | None = None) -> int:
     p_forecast.add_argument("--frameworks", type=Path, default=_default_frameworks())
     p_forecast.add_argument("--workspace", type=Path, default=None, help="defaults to the config file's directory")
     p_forecast.set_defaults(func=_cmd_forecast)
+
+    p_serve = sub.add_parser("serve", help="read-only dashboard and API over pipeline outputs")
+    p_serve.add_argument("--companies", type=Path, default=Path("companies"),
+                         help="directory containing <company>/config.yaml (default: companies)")
+    p_serve.add_argument("--host", default="127.0.0.1", help="default 127.0.0.1; local tooling only")
+    p_serve.add_argument("--port", type=int, default=8000)
+    p_serve.set_defaults(func=_cmd_serve)
 
     p_research = sub.add_parser("research", help="run the full pipeline (not yet implemented)")
     p_research.add_argument("--config", required=True, type=Path)

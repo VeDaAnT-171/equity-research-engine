@@ -112,9 +112,32 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
 
     # Lineage: forecast value -> prior forecast value -> base-year fact -> document -> source,
     # with each exogenous input attached to the assumption that supplied it.
+    #
+    # This stage rewrites lineage.json, so it must carry forward everything `analyze` recorded
+    # as well. Writing only the forecast chains here would silently break the chart -> analytic
+    # -> fact trace that Phase 4 established, and the loss would not show up until someone
+    # tried to audit a historical figure.
     registry = DocumentRegistry(workspace / "data" / "registry.sqlite", workspace / "data" / "raw")
     documents = registry.list_documents(company_id=config.company_id, include_superseded=True)
     lineage = LineageGraph.from_records(documents, [*reported, *derived])
+    for v in analytics:
+        lineage.add_node(LineageNode(v.value_id, NodeKind.MODEL_OUTPUT, v.analytic_id,
+                                     {"fiscal_year": str(v.fiscal_year), "value": str(v.value),
+                                      "formula": v.formula}))
+    for v in analytics:
+        for parent in (*v.input_fact_ids, *v.input_value_ids):
+            lineage.link(v.value_id, parent)
+    charts_index = out / "charts" / "index.json"
+    if charts_index.is_file():
+        for chart in json.loads(charts_index.read_text()):
+            if chart.get("skipped"):
+                continue
+            node = f"chart:{chart['chart_id']}"
+            lineage.add_node(LineageNode(node, NodeKind.CHART, chart["title"],
+                                         {"files": ",".join(chart.get("files", []))}))
+            for ids in (chart.get("series") or {}).values():
+                for parent in ids:
+                    lineage.link(node, parent)
     for a in result.assumptions.all:
         node = f"assumption:{a.assumption_id}:{a.type.value}"
         lineage.add_node(LineageNode(node, NodeKind.ASSUMPTION, a.assumption_id,

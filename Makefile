@@ -2,10 +2,13 @@ PY ?= python3
 CONFIG ?= companies/nyse-jpm/config.yaml
 FRAMEWORKS ?= industry_frameworks
 
-.PHONY: install test validate frameworks ingest quality analyze forecast data research
+.PHONY: install install-api test validate frameworks ingest quality analyze forecast data research serve
 
 install:
 	$(PY) -m pip install -e ".[dev]"
+
+install-api:
+	$(PY) -m pip install -e ".[dev,api]"
 
 test:
 	PYTHONPATH=src $(PY) -m pytest -q
@@ -29,6 +32,12 @@ forecast:
 	PYTHONPATH=src $(PY) -m research_engine forecast --config $(CONFIG) --frameworks $(FRAMEWORKS)
 
 data: ingest quality analyze forecast
+
+# Read-only dashboard over whatever the pipeline has written. Local tooling: do not expose it.
+COMPANIES ?= companies
+PORT ?= 8000
+serve:
+	PYTHONPATH=src $(PY) -m research_engine serve --companies $(COMPANIES) --port $(PORT)
 
 # Fails loudly until the pipeline phases exist. Never silently no-ops.
 research:

@@ -6,8 +6,9 @@ The company is an **input** (a YAML file). The engine is the product.
 > **Status: Phase 5 of 8 — forecast.** SEC XBRL data is retrieved, identity-checked, completed with derived
 > facts, tested against accounting identities, turned into framework-defined analytics and charts, and now
 > projected forward through the framework's driver graph under an assumption registry and named scenarios.
-> Every projected figure traces to the assumption behind it and on to a filed document. Valuation and report
-> rendering are **not built yet**. `make research` fails loudly until they are.
+> Every projected figure traces to the assumption behind it and on to a filed document, and a read-only
+> dashboard makes that trace clickable. Valuation and report rendering are **not built yet**.
+> `make research` fails loudly until they are.
 >
 > All tests run on **synthetic** SEC-format data. The engine has not yet been run against a live filing.
 
@@ -31,6 +32,8 @@ The company is an **input** (a YAML file). The engine is the product.
 | Driver graph | `forecast/drivers.py`, `industry_frameworks/*.yaml` | Framework drivers resolved into an evaluation plan; derivations re-applied forward; derivation/driver cycles broken by demotion, never silently |
 | Assumption registry | `forecast/assumptions.py`, `schemas/assumption.py` | Engine seeds `historical` assumptions from verified facts with lineage; analyst supplies guidance/consensus/judgement; guidance needs a cited document and analysts cannot claim `historical` |
 | Scenario forecast | `forecast/engine.py` | Fixed precedence ladder, per-year overrides, independent scenario projections; unset assumptions refuse to project rather than fall back |
+| Read-only API | `api/repository.py`, `api/app.py` | Serves only what the pipeline wrote; a stage that has not run returns 409 with the command to run, never an empty result that looks like a clean bill of health |
+| Dashboard | `api/static/` | Overview, analytics, scenario forecast, assumption ladder and quality report, with any figure clickable through to the filing it came from. No build step, no JS dependencies |
 | Company-agnostic guard | `tests/test_company_agnostic.py` | CI fails if any configured company's ticker/name/CIK appears in engine code or frameworks |
 
 ## Quick start
@@ -46,6 +49,7 @@ make ingest CONFIG=companies/nyse-jpm/config.yaml ARGS=--refresh   # re-download
 make quality CONFIG=companies/nyse-jpm/config.yaml                  # QARGS=--strict to fail on error-severity issues
 make analyze CONFIG=companies/nyse-jpm/config.yaml                  # historical analytics, charts, Parquet
 make forecast CONFIG=companies/nyse-jpm/config.yaml                 # driver graph, assumptions, scenarios
+make install-api && make serve                                      # dashboard at http://127.0.0.1:8000
 make data CONFIG=companies/nyse-jpm/config.yaml                     # ingest + quality + analyze + forecast
 ```
 
@@ -95,6 +99,31 @@ and read `output/assumptions.json` to see exactly which assumption keys the fram
 | `forecast.md` | Projection plan, scenario tables, assumptions in force, and everything refused — labelled MODEL OUTPUT, no interpretation |
 | `forecast_manifest.json` | Versions, framework hash, hash of the analysis manifest and of the assumptions file used |
 
+## Dashboard
+
+```bash
+make install-api          # FastAPI and uvicorn are optional extras; the pipeline does not need them
+make serve                # http://127.0.0.1:8000, reads every company under companies/
+make serve COMPANIES=/path/to/companies PORT=8100
+```
+
+Five views over whatever the pipeline has written: **Overview** (entity, framework and the evidence
+that chose it, document hashes), **Historical** (analytics by category with the framework's charts),
+**Forecast** (per-scenario projections with the method and assumption rung behind each figure),
+**Assumptions** (the resolution ladder and each value's provenance) and **Data quality** (checks,
+issues, and what was not evaluable).
+
+Every number carrying a lineage id is clickable and opens its full chain — model output to fact to
+document to source URL, with XBRL concept, filing accession and filed date. The API computes
+nothing: `GET /api/companies/<id>/analytics` returns exactly the rows in
+`historical_analytics.parquet`, which is what makes the dashboard checkable against the files an
+analyst would open directly. A stage that has not been run returns HTTP 409 naming the command to
+run, because a dashboard reporting zero data-quality issues for a company that was never checked is
+worse than one that shows nothing.
+
+The server has **no authentication** and binds to localhost. It is local analyst tooling; do not
+expose it.
+
 Add a company: create `companies/<exchange>-<ticker>/config.yaml`. No code changes.
 
 ## Design in one paragraph
@@ -119,7 +148,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/adr/](docs/adr/).
 7. **Research output** — HTML/PDF report; thesis, catalysts, falsifiers from analyst YAML, quantified by the engine
 8. **Second contrasting company end to end** (proves agnosticism with output, not just tests)
 
-Later: PDF/HTML KPI extraction, ESEF adapter, dashboard, event studies.
+Dashboard: built (see below), read-only over whatever the pipeline has written.
+
+Later: PDF/HTML KPI extraction, ESEF adapter, event studies.
 
 ## Limitations
 
@@ -144,6 +175,10 @@ Later: PDF/HTML KPI extraction, ESEF adapter, dashboard, event studies.
   closing identities (`equity[t] = equity[t-1] + net_income - dividends`) cannot yet be expressed as framework data.
 - Guidance must be transcribed by hand from a registered document, because PDF extraction is not implemented. The
   document id makes the citation checkable; it does not make the number automatic.
+- The dashboard is read-only and has no authentication. It cannot run the pipeline, edit assumptions or write
+  anything; those are CLI operations, deliberately, so that every change to a company's data is a recorded command.
+- The dashboard renders the charts the engine already produced rather than re-plotting in the browser, so provenance
+  marks (hollow = derived, † = flagged) survive. Forecast scenarios have no charts yet, only tables.
 
 ## Disclaimer
 

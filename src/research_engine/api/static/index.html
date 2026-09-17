@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Equity Research Engine</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#128200;</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <div>
+      <div class="title">Equity Research Engine</div>
+      <div class="sub" id="engine-version">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="company-picker">
+    <label for="company" class="sr-only">Company</label>
+    <select id="company" aria-label="Select a company"></select>
+    <div class="stages" id="stages" role="status" aria-label="Pipeline stages"></div>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist">
+  <button role="tab" class="tab active" data-view="overview">Overview</button>
+  <button role="tab" class="tab" data-view="historical">Historical</button>
+  <button role="tab" class="tab" data-view="forecast">Forecast</button>
+  <button role="tab" class="tab" data-view="assumptions">Assumptions</button>
+  <button role="tab" class="tab" data-view="quality">Data quality</button>
+</nav>
+
+<main id="main">
+  <div class="empty" id="boot">Loading workspace…</div>
+</main>
+
+<div class="drawer" id="drawer" hidden role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+  <div class="drawer-panel">
+    <div class="drawer-head">
+      <div>
+        <div class="drawer-eyebrow">Lineage</div>
+        <h2 id="drawer-title">&nbsp;</h2>
+      </div>
+      <button class="close" id="drawer-close" aria-label="Close lineage">&times;</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
