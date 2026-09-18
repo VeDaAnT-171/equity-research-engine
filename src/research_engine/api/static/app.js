@@ -734,6 +734,18 @@ async function viewQuality() {
 
 /* ---------- shell wiring ---------- */
 
+/* Deep linking is a convenience, not a feature the dashboard depends on. In a sandboxed or
+ * srcdoc iframe the document's origin does not match the URL being written, and replaceState
+ * throws a SecurityError; the same happens under some file:// policies. Losing the address bar
+ * there is acceptable, taking the whole page down with it is not. */
+function rememberLocation() {
+  try {
+    history.replaceState(null, '', `#${state.companyId}/${state.view}`);
+  } catch {
+    /* embedded or sandboxed: the view still works, the URL just does not follow it */
+  }
+}
+
 const VIEWS = {
   overview: viewOverview,
   historical: viewHistorical,
@@ -753,7 +765,7 @@ function selectTab(tab, { focus = false } = {}) {
   if (focus) tab.focus();
   state.view = tab.dataset.view;
   panel.setAttribute('aria-labelledby', tab.id);
-  history.replaceState(null, '', `#${state.companyId}/${state.view}`);
+  rememberLocation();
   render(VIEWS[state.view]);
 }
 
@@ -792,7 +804,7 @@ $('#company').addEventListener('change', (e) => {
   state.cache.clear();
   const c = state.companies.find((x) => x.company_id === state.companyId);
   paintStages(c?.stages);
-  history.replaceState(null, '', `#${state.companyId}/${state.view}`);
+  rememberLocation();
   announce(`Switched to ${c?.name ?? state.companyId}.`);
   render(VIEWS[state.view]);
 });
@@ -826,11 +838,16 @@ async function boot() {
     const tab = tabs().find((t) => t.dataset.view === hashView) || tabs()[0];
     selectTab(tab);
   } catch (err) {
+    // Only a fetch failure means the server is unreachable. Saying so for every error sends
+    // the reader to restart a server that was never the problem.
+    const networkFailure = err instanceof TypeError || /fetch|network|load failed/i.test(err.message);
     panel.setAttribute('aria-busy', 'false');
     panel.innerHTML = `<div class="card"><div class="body">
-      <h2 class="section">Could not reach the server</h2>
+      <h2 class="section">${networkFailure ? 'Could not reach the server' : 'The dashboard failed to start'}</h2>
       <p class="err">${esc(err.message)}</p>
-      <p class="muted">Check that <code>research-engine serve</code> is still running.</p>
+      <p class="muted">${networkFailure
+        ? 'Check that <code>research-engine serve</code> is still running, then reload.'
+        : 'This is a fault in the dashboard itself rather than in the data behind it. Reload the page; if it persists, the message above is the detail to report.'}</p>
     </div></div>`;
   }
 }
