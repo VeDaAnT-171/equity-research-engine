@@ -25,9 +25,17 @@ SEC XBRL  →  canonical facts  →  quality checks  →  analytics  →  foreca
 > **Not built:** valuation, the research report, and a second contrasting company taken end to
 > end. `make research` fails loudly rather than producing a partial report.
 >
-> **Not yet validated against a live filing.** All 288 tests run on synthetic SEC-format fixtures.
-> Behaviour on real filings is untested, and that is the single most useful thing anyone could
-> change. See [DISCLAIMER.md](DISCLAIMER.md) before relying on any output.
+> **Run against one live filer, not validated across many.** The full pipeline has been run on
+> JPMorgan Chase's SEC filings (FY2007–FY2025). The revenue bridge, pre-tax bridge and EPS identity
+> reconcile to the cent in the years checked; the balance-sheet identity misses in two annual
+> periods, which the quality stage flags rather than hides. The run also found defects the
+> synthetic fixtures could not reach — most now fixed, some still open (see the changelog). One
+> bank is not a sample: no other company, and no non-bank framework, has been run on live data.
+> See [DISCLAIMER.md](DISCLAIMER.md) before relying on any output.
+>
+> **The bank forecast is partly a trend.** Net interest income is modelled as earning assets times
+> margin, and average earning assets is not in XBRL, so until document extraction exists NII falls
+> back to its own three-year trend. Every figure that depends on it is marked `‡`.
 
 ## Why it is built this way
 
@@ -216,7 +224,8 @@ Later: PDF/HTML KPI extraction, ESEF adapter, event studies.
 - ROIC depends on `total_debt`, whose XBRL tag coverage varies widely by filer.
 - Outlier and scale rules need history: fewer than six fiscal years makes the outlier check "not evaluable".
 - Framework XBRL concept lists are candidates. Each run's extraction report shows which tagged metrics had no data for that filer.
-- Tests use synthetic SEC-format fixtures. The format follows SEC documentation, but a live run against a real filer is the first check against production payloads.
+- Tests use synthetic SEC-format fixtures, now alongside a documented live run against one bank. Other filers will tag things differently; the extraction report per run is the first place to look.
+- The document registry stores raw-file paths as absolute paths, so a workspace does not survive being moved to another folder or machine; re-run `ingest` after moving one.
 - Four frameworks ship (generic, banks, software, industrials). Insurance, asset managers, REITs, energy, etc. are not written.
 - No consensus data source. Consensus will only appear if a user supplies a document for it.
 - Forecast metrics with no driver formula and no derivation are projected by a trailing-median growth rate. That is

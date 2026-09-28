@@ -76,6 +76,17 @@ def series_points(series_id: str, framework: IndustryFramework, facts: list[Fina
             if f.metric_id == series_id and f.period.fiscal_period is FiscalPeriodCode.FY]
 
 
+def consecutive_runs(years: Sequence[int]) -> list[list[int]]:
+    """Indexes of `years` grouped into runs of consecutive fiscal years (input must be sorted)."""
+    runs: list[list[int]] = []
+    for i, year in enumerate(years):
+        if runs and year == years[runs[-1][-1]] + 1:
+            runs[-1].append(i)
+        else:
+            runs.append([i])
+    return runs
+
+
 def _label(series_id: str, framework: IndustryFramework) -> str:
     if series_id in framework.analytic_ids:
         return framework.analytic(series_id).name
@@ -132,6 +143,16 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
     years = sorted(set(data_years) | {y for y in coverage_years if y >= data_years[0]})
     record.years = years
     for sid, pts in data.items():
+        have = {pt.year for pt in pts}
+        holes = [y for y in range(pts[0].year, pts[-1].year) if y not in have]
+        if holes:
+            # The broken line shows that a gap exists; this says which years and why, so the break
+            # is not mistaken for a rendering artefact.
+            reason = _reason_for(sid, not_computed)
+            record.notes.append(
+                f"{_label(sid, framework)} has no value for {', '.join(f'FY{y}' for y in holes)}"
+                + (f" ({reason})" if reason else "")
+            )
         last = pts[-1].year
         if last < years[-1]:
             record.truncated[sid] = last
@@ -160,7 +181,12 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
                     bar.set_edgecolor(color)
             dagger_offsets += [(o, p) for o, p in zip(offsets, pts, strict=True)]
         else:
-            ax.plot(xs, ys, color=color, linewidth=1.8, label=label, zorder=2)
+            # One segment per run of consecutive years. A single polyline would bridge a missing
+            # year with a straight stroke, drawing a smooth path through years that have no data —
+            # the picture asserting values the record does not have.
+            for k, run in enumerate(consecutive_runs([pt.year for pt in pts])):
+                ax.plot([xs[i] for i in run], [ys[i] for i in run], color=color, linewidth=1.8,
+                        label=label if k == 0 else None, zorder=2)
             for x, p in zip(xs, pts, strict=True):
                 ax.plot([x], [p.value], marker="o", markersize=5, color=color,
                         markerfacecolor="white" if p.derived else color, zorder=3)
@@ -172,7 +198,11 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
             ax.annotate("†", (offset, point.value), textcoords="offset points", xytext=(0, 6),
                         ha="center", color="#b24a3b")
 
-    ax.set_xticks(range(len(years)), [f"FY{y}" for y in years])
+    # Past a dozen years the full labels collide into an unreadable strip; label every other year
+    # and keep the tick, so each year still has a position and the gaps stay countable.
+    step = 2 if len(years) > 12 else 1
+    ax.set_xticks(range(len(years)),
+                  [f"FY{y}" if (len(years) - 1 - i) % step == 0 else "" for i, y in enumerate(years)])
     ax.grid(axis="y", color="#e3e6ea", linewidth=0.8, zorder=0)
     ax.axhline(0, color="#8a8f98", linewidth=0.8, zorder=1)
     ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
@@ -213,7 +243,12 @@ def render_charts(framework: IndustryFramework, facts: list[FinancialFact], anal
                   flagged_fact_ids: set[str], out_dir: Path, *, company_label: str, engine_version: str,
                   coverage_years: Sequence[int] = (),
                   not_computed: Mapping[str, int] | None = None) -> list[ChartRecord]:
-    return [render_chart(spec, framework, facts, analytics, flagged_fact_ids, out_dir,
-                         company_label=company_label, engine_version=engine_version,
-                         coverage_years=coverage_years, not_computed=not_computed)
-            for spec in framework.charts]
+    records = [render_chart(spec, framework, facts, analytics, flagged_fact_ids, out_dir,
+                            company_label=company_label, engine_version=engine_version,
+                            coverage_years=coverage_years, not_computed=not_computed)
+               for spec in framework.charts]
+    for record in records:
+        if record.skipped:  # same reasoning as forecast.charts.remove_stale_images
+            for ext in ("svg", "png"):
+                (out_dir / f"{record.chart_id}.{ext}").unlink(missing_ok=True)
+    return records

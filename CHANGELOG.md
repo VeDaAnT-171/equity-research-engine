@@ -4,10 +4,56 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Versions before 1.0.0 are pre-release: the engine has not been validated against a live SEC
-filing, so no interface here should be treated as stable.
+Versions before 1.0.0 are pre-release: the engine has been run against one live filer and no
+more, so no interface here should be treated as stable.
 
 ## [Unreleased]
+
+### Added
+
+- **Declared fallback drivers.** A driver may declare `fallback: trend`. When the company has no
+  base-year value for a metric the driver's formula needs, the metrics it affects are projected on
+  their own history instead, and every forecast value that depends on one — however far downstream
+  — carries `fallback_for`. The substitution is recorded in `assumptions.json`, stated above the
+  tables in `forecast.md`, and shown in the dashboard as a note plus a `‡` on each affected figure.
+  The bank framework declares it for net interest income, whose model (earning assets times margin)
+  needs average interest-earning assets, which has no us-gaap element. Before this, no bank read
+  from XBRL alone had a projected revenue line, net income or EPS.
+
+### Fixed (continued from the first live run)
+
+- **Bank loans stopped at FY2015.** The framework declared only the oldest of the three elements
+  the net-loans line has been tagged with; the two successors are now declared, ranked, and
+  stitched with a `concept_switch` warning. This restored credit costs, loan-to-deposit and the
+  provision driver, and gave `missing_years` its first real finding: one year between renames that
+  no declared element covers.
+- **A skipped chart could still be served.** A projection image from an earlier run survived after
+  the metric stopped being projected; the index marked the chart skipped and the image endpoint
+  served the file anyway. Skipped charts are no longer served, and their old images are deleted
+  when the stage runs.
+- **Lines bridged missing years.** A single polyline drew a smooth path through years with no data.
+  Lines now break at gaps, and the chart notes name the missing years and why.
+- **X-axis labels collided** past a dozen years; every other year is labelled beyond that.
+- **The company-agnostic check missed a leak.** Engine comments written during this work named the
+  live filer. They are removed, and the invariant test now also searches for a company's coined
+  brand word, which is how the leak got past a check that only matched full legal names.
+
+### Still open from the live run
+
+Found, understood, and deliberately not fixed yet — listed so that "fixed" above means what it says.
+
+- `missing_years` checks only for gaps *inside* a series' own span, so a metric that stops years
+  before its siblings passes. Charts now say where a series stops; the quality check still does not.
+- The `balance_sheet_identity` warning suggests non-controlling interests as the likely cause. For
+  this filer liabilities plus equity *exceed* assets, which that explanation cannot produce; the
+  real cause is not yet known.
+- `derivation:diluted_eps` was never evaluable on this filer (0 of 111), so the EPS identity was
+  confirmed by hand rather than by the engine.
+- The document registry stores raw-file paths as absolute paths, so a workspace cannot be moved.
+- The forecast seeds every rate from the three years to the base year with no mean reversion. On
+  this filer that window includes a bank acquisition, so loans compound at roughly 11% a year while
+  deposits grow under 3%. Nothing is wrong with the arithmetic; the assumption is the weak part,
+  which is what `assumptions.yaml` exists to override.
 
 ### Fixed
 

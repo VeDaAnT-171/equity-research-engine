@@ -114,3 +114,49 @@ def test_self_referential_derivation_is_demoted():
     graph = build_driver_graph(framework)
     assert graph.rule("margin").method == "level"
     assert "margin" in graph.demoted
+
+
+# ---- fallbacks -----------------------------------------------------------------------------
+
+def test_a_driver_whose_input_is_unavailable_takes_its_declared_fallback(registry):
+    """Average interest-earning assets has no us-gaap element, so no bank read from XBRL alone has it.
+
+    Without a fallback the NII driver has nothing to multiply and the income statement below it
+    goes unprojected. With `fallback: trend`, NII is projected on its own history and the graph
+    records that the declared model was not the one used.
+    """
+    banks = registry.get("banks")
+    reported = {m.id for m in banks.metrics} - {"average_interest_earning_assets", "net_interest_margin"}
+    graph = build_driver_graph(banks, available=reported)
+    rule = graph.rule("net_interest_income")
+    assert rule.method == "growth" and rule.fallback_for == "net_interest_income_engine"
+    assert "average_interest_earning_assets" in graph.fallbacks["net_interest_income"]
+    # the driver no longer runs, so the margin it needed is neither planned nor demoted
+    assert "net_interest_margin" not in graph.rules and not graph.demoted
+
+
+def test_the_declared_driver_is_used_whenever_its_inputs_are_available(registry):
+    """A fallback is a substitute, never a preference."""
+    banks = registry.get("banks")
+    graph = build_driver_graph(banks, available={m.id for m in banks.metrics})
+    assert graph.rule("net_interest_income").method == "driver_formula"
+    assert graph.rule("net_interest_income").fallback_for is None and not graph.fallbacks
+
+
+def test_without_availability_the_plan_is_the_framework_alone(registry):
+    """Callers that do not pass data get the declared model, exactly as before fallbacks existed."""
+    graph = build_driver_graph(registry.get("banks"))
+    assert graph.rule("net_interest_income").method == "driver_formula" and not graph.fallbacks
+
+
+def test_a_driver_without_a_fallback_is_not_substituted(registry):
+    """Fallback is opt-in per driver: a missing input otherwise leaves the metric unprojected."""
+    banks = registry.get("banks")
+    graph = build_driver_graph(banks, available={m.id for m in banks.metrics} - {"loans"})
+    assert graph.rule("provision_for_credit_losses").method == "driver_formula"
+    assert "provision_for_credit_losses" not in graph.fallbacks
+
+
+def test_a_fallback_without_a_formula_is_rejected():
+    with pytest.raises(ValueError, match="no formula to fall back from"):
+        DriverSpec(id="d", name="d", affects=("revenue",), fallback="trend")

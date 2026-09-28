@@ -105,3 +105,33 @@ def test_charts_follow_driver_graph_order(framework, tmp_path):
     charted = [r.metric_id for r in records]
     assert charted == [m for m in result.graph.order if m in charted]
     assert any(not r.skipped for r in records)
+
+
+def test_rendering_removes_images_left_by_a_previous_run(framework, tmp_path):
+    """A chart skipped this run writes nothing, so its old image would otherwise look current."""
+    from types import SimpleNamespace
+
+    (tmp_path / "forecast_revenue.svg").write_text("<svg>from an earlier run</svg>")
+    (tmp_path / "forecast_revenue.png").write_bytes(b"old")
+    only_actual = {"base": {"revenue": {2025: _value("base", "revenue", 2025, 1000, method="actual")}}}
+    result = SimpleNamespace(by_scenario=only_actual, base_year=2025,
+                             graph=SimpleNamespace(order=("revenue",)))
+    records = render_forecast_charts(result, framework, tmp_path, company_label="Test Co", engine_version="x")
+    assert records[0].skipped == "not_projected"
+    assert not list(tmp_path.iterdir())
+
+
+def test_a_chart_built_on_a_fallback_says_so_in_the_image(framework, tmp_path):
+    """The image travels without the page around it, so the caveat has to be inside it."""
+    marked = [v if v.method == "actual" else v.model_copy(update={"fallback_for": ("net_interest_income",)})
+              for v in _series("base", [1100, 1200])]
+    record = render_forecast_chart("revenue", {"base": marked}, framework, tmp_path, base_year=2025,
+                                   company_label="Test Co", engine_version="x")
+    assert record.fallback_for == ["net_interest_income"]
+    assert "Rests on net_interest_income projected by its own trend" in (tmp_path / "forecast_revenue.svg").read_text()
+
+
+def test_a_chart_on_the_declared_model_carries_no_fallback_caption(framework, tmp_path):
+    record = render_forecast_chart("revenue", {"base": _series("base", [1100, 1200])}, framework, tmp_path,
+                                   base_year=2025, company_label="Test Co", engine_version="x")
+    assert record.fallback_for == [] and "Rests on" not in (tmp_path / "forecast_revenue.svg").read_text()

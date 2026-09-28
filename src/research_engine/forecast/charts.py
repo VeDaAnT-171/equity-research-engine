@@ -48,6 +48,9 @@ class ForecastChartRecord:
     table: dict[str, dict[str, float]] = field(default_factory=dict)
     methods: dict[str, str] = field(default_factory=dict)
     skipped: str | None = None
+    # Metrics projected by fallback that any plotted value depends on. The image is downloaded and
+    # pasted on its own, so the caveat has to be in the picture, not only in the page around it.
+    fallback_for: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -142,11 +145,14 @@ def render_forecast_chart(metric_id: str, by_scenario: dict[str, list[ForecastVa
 
     ax.set_title(f"{record.title}\n", loc="left")
     ax.text(0, 1.02, company_label, transform=ax.transAxes, color="#5b6470", fontsize=8.5)
-    fig.text(0.01, 0.01,
-             "MODEL OUTPUT. Solid to the last reported year, dashed after it; filled markers are "
-             f"reported, hollow are projected. research-engine {engine_version}.",
-             fontsize=7, color="#5b6470")
-    fig.tight_layout(rect=(0, 0.06, 1, 1))
+    record.fallback_for = sorted({f for vs in ordered.values() for v in vs for f in v.fallback_for})
+    caption = ("MODEL OUTPUT. Solid to the last reported year, dashed after it; filled markers are "
+               f"reported, hollow are projected. research-engine {engine_version}.")
+    if record.fallback_for:
+        caption += (f"\n‡ Rests on {', '.join(record.fallback_for)} projected by its own trend: the "
+                    "framework's declared driver needs an input this company does not report.")
+    fig.text(0.01, 0.01, caption, fontsize=7, color="#5b6470")
+    fig.tight_layout(rect=(0, 0.09 if record.fallback_for else 0.06, 1, 1))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for ext in ("svg", "png"):
@@ -165,9 +171,22 @@ def render_forecast_charts(result, framework: IndustryFramework, out_dir: Path, 
         for metric_id, points in series.items():
             by_metric.setdefault(metric_id, {})[scenario] = list(points.values())
     ordered = [m for m in result.graph.order if m in by_metric]
-    return [
+    records = [
         render_forecast_chart(metric_id, by_metric[metric_id], framework, out_dir,
                               base_year=result.base_year, company_label=company_label,
                               engine_version=engine_version)
         for metric_id in ordered
     ]
+    remove_stale_images(out_dir, [r.chart_id for r in records if r.skipped])
+    return records
+
+
+def remove_stale_images(out_dir: Path, chart_ids: list[str]) -> None:
+    """Delete images a previous run rendered for charts this run skipped.
+
+    A skipped chart writes nothing, so without this its old image outlives the reason it existed:
+    a projection the engine now refuses would still sit in the output folder looking current.
+    """
+    for chart_id in chart_ids:
+        for ext in ("svg", "png"):
+            (out_dir / f"{chart_id}.{ext}").unlink(missing_ok=True)

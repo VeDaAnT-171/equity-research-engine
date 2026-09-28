@@ -135,3 +135,27 @@ def test_a_complete_series_gets_no_truncation_note(tmp_path, frameworks_dir):
 def test_cli_analyze(prepared, sec_bank_config_path, tmp_path, frameworks_dir, capsys):
     code = main(["analyze", "--config", str(sec_bank_config_path), "--frameworks", str(frameworks_dir), "--workspace", str(tmp_path)])
     assert code == 0 and "charts:" in capsys.readouterr().out
+
+
+def test_a_line_is_broken_where_years_are_missing():
+    """A polyline across a missing year draws a smooth path through years with no data.
+
+    A bank's loan series has no net-loans value for one year between two taxonomy renames; a single
+    stroke bridged it and the credit-cost chart showed a clean decline through a year the engine
+    had no number for.
+    """
+    from research_engine.analysis.charts import consecutive_runs
+    assert consecutive_runs([2016, 2017, 2018, 2021, 2022]) == [[0, 1, 2], [3, 4]]
+    assert consecutive_runs([2020]) == [[0]]
+    assert consecutive_runs([]) == []
+
+
+def test_a_gap_inside_a_series_is_named_in_the_chart_notes(tmp_path, frameworks_dir):
+    framework = FrameworkRegistry(frameworks_dir).get("generic")
+    facts = [reported("revenue", 100 + i, fy(y)) for i, y in enumerate((2020, 2021, 2024, 2025))]
+    spec = ChartSpec(id="revenue", title="Revenue", kind="line", series=("revenue",), format="currency")
+    r = render_chart(spec, framework, facts, {}, set(), tmp_path / "t", company_label="Test",
+                     engine_version="x", coverage_years=range(2020, 2026))
+    assert r.years == [2020, 2021, 2022, 2023, 2024, 2025]
+    assert any("no value for FY2022, FY2023" in n for n in r.notes)
+    assert not r.truncated, "a gap is not a truncation: the series runs to the end of the span"

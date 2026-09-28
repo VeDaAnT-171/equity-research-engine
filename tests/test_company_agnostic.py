@@ -11,11 +11,25 @@ def _company_configs(root):
     return sorted((root / "companies").glob("*/config.yaml")) + sorted((root / "tests" / "fixtures" / "companies").glob("*.yaml"))
 
 
+def _brand(name: str) -> str | None:
+    """The coined first word of a company name, if it has one — `JPMorgan`, `PayPal`, `BlackRock`.
+
+    Matching the full legal name alone let "JPMorgan's" into engine comments unnoticed. A coined
+    word (a capital after its first letter, or a digit) is distinctive enough to search for on its
+    own; an ordinary first word ("Example", "General") is not, and searching for it would fail on
+    every docstring. This still misses plain-word brands such as "Goldman"; it narrows the gap,
+    it does not close it.
+    """
+    first = re.split(r"[\s,&.]+", name.strip())[0]
+    return first if len(first) >= 4 and re.search(r".[A-Z0-9]", first) else None
+
+
 def _identifiers(root):
     for path in _company_configs(root):
         cfg = load_project_config(path)
         ids = cfg.company.identifiers
-        yield path, [v for v in (cfg.company.ticker, cfg.company.name, ids.cik, ids.lei, ids.isin) if v]
+        candidates = (cfg.company.ticker, cfg.company.name, _brand(cfg.company.name), ids.cik, ids.lei, ids.isin)
+        yield path, [v for v in candidates if v]
 
 
 def test_there_is_at_least_one_company_config(root):

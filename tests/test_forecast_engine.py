@@ -208,3 +208,39 @@ def test_no_annual_facts_is_a_loud_failure(framework):
     from research_engine.errors import ForecastError
     with pytest.raises(ForecastError, match="no full-year facts"):
         _run(framework, [], [], forecast_years=1)
+
+
+def test_every_value_downstream_of_a_fallback_carries_it(frameworks_dir):
+    """A revenue line built from a trend-extrapolated income line is not the modelled revenue line.
+
+    The mark has to reach every value computed from the fallback, however far downstream — and
+    none that is independent of it — or a reader lifting EPS from the table cannot tell.
+    """
+    from research_engine.analysis import run_analytics
+    from research_engine.frameworks import FrameworkRegistry
+
+    from .factories import fy, fy_end, reported
+    banks = FrameworkRegistry(frameworks_dir).get("banks")
+    facts = []
+    for i, year in enumerate(range(2021, 2026)):
+        k = 1 + i / 20
+        facts += [reported("net_interest_income", 50 * k, fy(year)), reported("noninterest_income", 40 * k, fy(year)),
+                  reported("noninterest_expense", 55 * k, fy(year)), reported("provision_for_credit_losses", 5 * k, fy(year)),
+                  reported("income_tax_expense", 6 * k, fy(year)), reported("pre_tax_income", 30 * k, fy(year)),
+                  reported("net_income", 24 * k, fy(year)), reported("net_income_to_common", 23 * k, fy(year)),
+                  reported("revenue", 90 * k, fy(year)), reported("diluted_shares", 3, fy(year), unit="shares"),
+                  reported("loans", 700 * k, fy_end(year)), reported("deposits", 1000 * k, fy_end(year)),
+                  reported("total_equity", 200 * k, fy_end(year)), reported("total_assets", 2000 * k, fy_end(year))]
+    analytics = run_analytics(banks, facts, company_id=COMPANY, quality_report=None).values
+    result = run_forecast(banks, company_id=COMPANY, facts=facts, analytics=analytics, forecast_years=2)
+    base = result.by_scenario["base"]
+    year = result.base_year + 1
+
+    assert result.graph.fallbacks.keys() == {"net_interest_income"}
+    for metric in ("net_interest_income", "revenue", "pre_tax_income", "net_income", "diluted_eps"):
+        assert base[metric][year].fallback_for == ("net_interest_income",), metric
+    # independent of NII, so unmarked: a mark on everything would be a mark on nothing
+    for metric in ("noninterest_income", "loans", "provision_for_credit_losses", "deposits"):
+        assert base[metric][year].fallback_for == (), metric
+    # the base-year actual is a fact, not a projection, whatever model follows it
+    assert base["net_interest_income"][result.base_year].fallback_for == ()

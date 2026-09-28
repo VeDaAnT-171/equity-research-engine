@@ -87,3 +87,27 @@ def test_fact_ids_stable_across_runs(observations):
     b, _ = run(observations, "banks")
     assert [f.fact_id for f in a] == [f.fact_id for f in b]
     assert len({f.fact_id for f in a}) == len(a)
+
+
+def test_bank_loans_are_stitched_across_the_taxonomy_renames():
+    """Filers moved the net-loans line onto new elements around 2015 and again with CECL in 2020.
+
+    Declaring only the oldest element meant a bank's loan book stopped mid-history — credit costs,
+    loan-to-deposit and the provision driver all stopped with it, and nothing said why. All three
+    names are now declared; each period records which one it came from, and a switch is reported.
+    """
+    from datetime import date
+
+    from research_engine.sources.sec import XbrlObservation
+
+    def obs(concept, year, value, n):
+        return XbrlObservation("us-gaap", concept, "USD", Decimal(value), None, date(year, 12, 31),
+                               f"0000000000-{year + 1 - 2000:02d}-{n:06d}", "10-K", date(year + 1, 2, 20), None)
+
+    rows = [obs("LoansAndLeasesReceivableNetReportedAmount", 2014, 743, 1),
+            obs("LoansReceivableNet", 2016, 881, 2),
+            obs("FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss", 2021, 1061, 3)]
+    facts, report = run(rows, "banks")
+    loans = {f.period.fiscal_year: f.value for f in facts if f.metric_id == "loans"}
+    assert loans == {2014: 743, 2016: 881, 2021: 1061}
+    assert report.coverage["loans"].to_dict()["concept_switch"] is True

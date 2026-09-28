@@ -74,7 +74,16 @@ metrics:
     statement: balance_sheet
     period_type: instant
     expected_sign: non_negative
-    xbrl_concepts: [us-gaap:LoansAndLeasesReceivableNetReportedAmount]
+    # The balance-sheet net-loans line has been tagged three ways as the taxonomy moved through
+    # CECL: filers moved off the first element around 2015 and onto the third from 2020. All three
+    # name the same line (loans net of the allowance), and the extractor ranks them, records which
+    # one each period came from, and raises a concept_switch warning where it stitches. Declaring
+    # only the oldest meant a filer's loan book simply stopped mid-history, and everything computed
+    # from loans — credit costs, loan-to-deposit, the provision driver — stopped with it.
+    xbrl_concepts:
+      - us-gaap:FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss
+      - us-gaap:LoansReceivableNet
+      - us-gaap:LoansAndLeasesReceivableNetReportedAmount
   - id: deposits
     name: Deposits
     unit_kind: currency
@@ -147,8 +156,15 @@ drivers:
     affects: [loans, deposits]
   - id: net_interest_income_engine
     name: Earning assets x margin
+    description: >-
+      The right model, and one structured data cannot feed: average interest-earning assets has no
+      us-gaap element, so it only exists once extracted from the average-balance table in the annual
+      report. Until then net interest income falls back to its own trend. That trend is whatever the
+      last three years were — across a rate cycle, a poor guide — and every figure built on it is
+      marked, so the gap between this and a modelled forecast stays visible.
     affects: [net_interest_income]
     formula: average_interest_earning_assets * net_interest_margin
+    fallback: trend
   - id: credit_cost
     name: Credit costs
     affects: [provision_for_credit_losses]

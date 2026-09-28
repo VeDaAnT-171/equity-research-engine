@@ -47,6 +47,17 @@ def render_markdown(*, company_id: str, framework: IndustryFramework, result: Fo
         "are listed rather than filled in.", "",
     ]
 
+    if result.graph.fallbacks:
+        # Placed before the numbers, not after them: a reader who stops at the table should
+        # already know which of its rows rest on a trend rather than the declared model.
+        lines += ["## Fallbacks in force", "",
+                  "> These metrics are **not** produced by the model the framework declares for them. The company "
+                  "does not report an input that model needs, so each is projected on its own history instead, and "
+                  "every figure computed from one is marked **‡** in the tables below.", "",
+                  "| Metric | Why the declared driver was not used |", "|---|---|"]
+        lines += [f"| `{m}` | {why} |" for m, why in sorted(result.graph.fallbacks.items())]
+        lines.append("")
+
     lines += ["## Projection plan", "",
               "How each metric obtains its value, in evaluation order. This is framework data, not engine logic.", "",
               "| Metric | Method | Formula | Why |", "|---|---|---|---|"]
@@ -72,11 +83,18 @@ def render_markdown(*, company_id: str, framework: IndustryFramework, result: Fo
             cells = [f"`{metric_id}`", fmt(float(base.value), unit, currency) if base else "–"]
             for y in years:
                 v = row.get(y)
-                cells.append(fmt(float(v.value), unit, currency) if v else "–")
+                mark = " ‡" if v is not None and v.fallback_for else ""
+                cells.append(fmt(float(v.value), unit, currency) + mark if v else "–")
             projected = next((row[y] for y in years if y in row), None)
-            cells.append(METHOD_LABEL[projected.method] if projected else "not projected")
+            method = METHOD_LABEL[projected.method] if projected else "not projected"
+            if projected is not None and projected.fallback_for:
+                method += f" ‡ (rests on {', '.join(projected.fallback_for)} trend)"
+            cells.append(method)
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
+        if any(v.fallback_for for row in series.values() for v in row.values()):
+            lines += ["‡ Depends on a metric projected by fallback rather than by its declared driver; "
+                      "see *Fallbacks in force*.", ""]
 
     lines += ["## Assumptions in force", "",
               "Resolution order is fixed: scenario, then analyst, then management guidance, then consensus, then "

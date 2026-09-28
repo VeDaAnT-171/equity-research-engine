@@ -47,7 +47,7 @@ def _forecast_schema():
         ("fiscal_year", pa.int32()), ("value", pa.float64()), ("value_exact", pa.string()),
         ("unit_kind", pa.string()), ("currency", pa.string()), ("method", pa.string()), ("formula", pa.string()),
         ("assumption_ids", strings), ("assumption_types", strings), ("value_id", pa.string()),
-        ("input_value_ids", strings), ("input_fact_ids", strings),
+        ("input_value_ids", strings), ("input_fact_ids", strings), ("fallback_for", strings),
     ])
 
 
@@ -58,7 +58,7 @@ def _row(v: ForecastValue) -> dict:
         "unit_kind": v.unit_kind, "currency": v.currency, "method": v.method, "formula": v.formula,
         "assumption_ids": list(v.assumption_ids), "assumption_types": list(v.assumption_types),
         "value_id": v.value_id, "input_value_ids": list(v.input_value_ids),
-        "input_fact_ids": list(v.input_fact_ids),
+        "input_fact_ids": list(v.input_fact_ids), "fallback_for": list(v.fallback_for),
     }
 
 
@@ -204,12 +204,14 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
             {"metric_id": m, "method": result.graph.rule(m).method, "formula": result.graph.rule(m).formula,
              "driver_id": result.graph.rule(m).driver_id, "reason": result.graph.rule(m).reason,
              "metric_inputs": list(result.graph.rule(m).metric_inputs),
-             "assumption_keys": list(result.graph.rule(m).assumption_keys)}
+             "assumption_keys": list(result.graph.rule(m).assumption_keys),
+             "fallback_for": result.graph.rule(m).fallback_for}
             for m in result.graph.order
         ],
         "not_projected": dict(sorted(result.not_projected.items())),
         "unresolved_targets": dict(sorted(result.graph.unresolved.items())),
         "demoted_derivations": dict(sorted(result.graph.demoted.items())),
+        "fallbacks": dict(sorted(result.graph.fallbacks.items())),
     }, indent=2, default=str))
 
     _atomic_write(out / "forecast_charts" / "index.json",

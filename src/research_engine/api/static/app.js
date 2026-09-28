@@ -531,8 +531,13 @@ async function viewForecast() {
     const cells = cols.map((y) => {
       const p = byYear.get(y);
       if (!p) return '<td class="num muted">–</td>';
+      // The mark sits on the number itself, visible and read aloud, because the table is where a
+      // reader lifts a figure from — a caveat kept only in a card further down travels nowhere.
+      const fb = (p.fallback_for || []).length
+        ? `<span class="fbmark" aria-hidden="true">‡</span><span class="sr-only"> (rests on a fallback trend)</span>`
+        : '';
       return `<td class="num">${traceable(p.value_id, fmtValue(p.value, m.unit_kind, m.currency),
-        `${m.metric_id} FY${y}`)}</td>`;
+        `${m.metric_id} FY${y}`)}${fb}</td>`;
     }).join('');
     const projected = years.map((y) => byYear.get(y)).find(Boolean);
     const src = projected?.assumption_types?.[0];
@@ -540,6 +545,7 @@ async function viewForecast() {
     // engine chose to carry the last reported year forward, which is not what happened.
     const method = projected
       ? badge(projected.method, projected.method === 'driver_formula' ? 'driver' : projected.method)
+        + (plan.get(m.metric_id)?.fallback_for ? ` ${badge('fallback', 'fallback')}` : '')
       : '<span class="muted">not projected</span>';
     const formula = plan.get(m.metric_id)?.formula || '';
     return `<tr>
@@ -565,8 +571,26 @@ async function viewForecast() {
                loading="lazy" width="720" height="380">
         </div></div>
         <p class="chartmeta"><span>${esc((c.scenarios || []).join(', '))}</span></p>
+        ${(c.fallback_for || []).length ? `<p class="chartnote incomplete" role="note">
+          <strong><span aria-hidden="true">‡</span> Rests on a fallback trend.</strong>
+          ${(c.fallback_for).map((m) => `<code>${esc(m)}</code>`).join(', ')} is projected on its own
+          history, not by the driver the framework declares.</p>` : ''}
         ${chartDataTable('forecast', c.chart_id)}
       </section>`).join('')}</div>` : '';
+
+  const fallbacks = Object.entries(f.fallbacks || {});
+  const anyMarked = active.metrics.some((m) => m.points.some((p) => (p.fallback_for || []).length));
+  // Above the table, not below it: someone who reads only the numbers must already have been told
+  // which of them are a trend standing in for the model the framework actually declares.
+  const fallbackNote = fallbacks.length ? `
+    <div class="note warn" role="note"><p><strong>Fallback in force.</strong>
+      ${fallbacks.map(([k]) => `<code>${esc(k)}</code>`).join(', ')}
+      ${fallbacks.length === 1 ? 'is' : 'are'} projected on ${fallbacks.length === 1 ? 'its' : 'their'} own
+      three-year trend, not by the driver the framework declares, because this company does not report
+      an input that driver needs. Every figure computed from ${fallbacks.length === 1 ? 'it' : 'them'} —
+      directly or downstream — is marked <span class="fbmark" aria-hidden="true">‡</span><span class="sr-only">with a double dagger</span>.</p>
+      ${fallbacks.map(([k, v]) => `<p class="muted"><span class="mono">${esc(k)}</span>: ${esc(v)}</p>`).join('')}
+    </div>` : '';
 
   const demoted = Object.entries(f.demoted_derivations || {});
   const demotedCard = demoted.length ? `
@@ -606,6 +630,7 @@ async function viewForecast() {
     <div class="note"><p><strong>Classification: model output.</strong> Nothing below is a fact.
     Each figure is produced by the framework's driver graph from the assumptions listed under
     Assumptions, starting from the last reported year.</p></div>
+    ${fallbackNote}
     ${switcher}
     ${active.description ? `<div class="note"><p>${esc(active.description)}</p></div>` : ''}
     <section aria-label="Projected metrics">
@@ -617,7 +642,10 @@ async function viewForecast() {
           ${years.map((y) => plainTh(`FY${y}`, 'num')).join('')}
           ${plainTh('Method')}${plainTh('Source')}${plainTh('Formula')}</tr></thead>
         <tbody>${rows || `<tr><td colspan="${cols.length + 4}" class="muted">Nothing projected in this scenario.</td></tr>`}</tbody>
-      </table></div></div></div>
+      </table></div>
+      ${anyMarked ? `<p class="chartnote"><span class="fbmark" aria-hidden="true">‡</span>
+        Depends on a metric projected by fallback rather than by its declared driver.</p>` : ''}
+      </div></div>
     </section>
     ${chartCards}
     ${demotedCard}

@@ -96,6 +96,12 @@ class DriverSpec(StrictModel):
     affects: tuple[str, ...] = Field(min_length=1)
     # None = trend/assumption-driven. Otherwise expressed over metric ids only.
     formula: str | None = None
+    # What to do when the company has no base-year value for a metric the formula needs. None
+    # leaves the affected metrics not projected, which is honest and often useless. "trend"
+    # projects each affected metric on its own history instead, and every value computed from
+    # it — directly or downstream — carries the fact that the declared model was not the one used.
+    # It is opt-in per driver because a trend is a much weaker model than most formulas replace.
+    fallback: Literal["trend"] | None = None
 
     @field_validator("formula")
     @classmethod
@@ -103,6 +109,12 @@ class DriverSpec(StrictModel):
         if v is not None:
             referenced_names(v)
         return v
+
+    @model_validator(mode="after")
+    def _fallback_needs_a_formula(self) -> DriverSpec:
+        if self.fallback is not None and self.formula is None:
+            raise ValueError(f"driver {self.id!r} declares a fallback but has no formula to fall back from")
+        return self
 
 
 OPENING_SUFFIX = "__opening"  # `cash__opening` = instant value at the start of a duration period

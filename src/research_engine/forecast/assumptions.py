@@ -40,7 +40,7 @@ from ..schemas.forecast import BASE_SCENARIO, ScenarioSpec
 SEED_WINDOW_YEARS = 3
 
 # The window is anchored to the forecast's base year, not to whichever years a metric happens to
-# have. Taking the last three *observations* instead reaches back across every gap: JPMorgan's
+# have. Taking the last three *observations* instead reaches back across every gap: one bank's
 # loans series ended in FY2015, and a growth rate measured over FY2013-FY2015 was still seeded and
 # would have compounded to FY2030 had the base year value survived. The same reach kept a decaying
 # operating-cash-flow projection alive after the sign-crossing pairs it rested on were refused —

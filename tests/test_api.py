@@ -107,7 +107,10 @@ def test_forecast_matches_the_parquet_and_keeps_assumption_provenance(client, wo
 def test_forecast_reports_refusals_and_demotions(client):
     body = client.get("/api/companies/nyse-exbk/forecast").json()
     assert body["not_projected"], "a sparse fixture must report what it could not project"
-    assert "net_interest_margin" in body["demoted_derivations"]
+    assert "net_interest_income" in body["fallbacks"], "a fallback taken must be visible over the API"
+    marked = {m["metric_id"] for s in body["scenarios"] for m in s["metrics"]
+              for p in m["points"] if p["fallback_for"]}
+    assert "net_interest_income" in marked
 
 
 def test_scenario_filter(client):
@@ -311,3 +314,16 @@ def test_the_cli_exits_non_zero_rather_than_serving_publicly(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "refusing to bind" in captured.err
     assert "no authentication" in captured.out
+
+
+def test_a_skipped_chart_is_not_served_even_if_an_old_image_survives(client, workspace):
+    """The index is the authority on what is current; a file on disk is not.
+
+    A projection rendered by an earlier run stayed in forecast_charts/ after the metric stopped
+    being projected. The index marked it skipped, and the endpoint served the stale picture anyway.
+    """
+    out = workspace / "nyse-exbk" / "output" / "forecast_charts"
+    index = json.loads((out / "index.json").read_text())
+    skipped = next(c["chart_id"] for c in index if c.get("skipped"))
+    (out / f"{skipped}.svg").write_text("<svg>stale</svg>")
+    assert client.get(f"/api/companies/nyse-exbk/forecast/charts/{skipped}.svg").status_code == 404

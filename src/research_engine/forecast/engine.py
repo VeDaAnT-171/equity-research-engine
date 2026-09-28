@@ -170,6 +170,9 @@ class _Projector:
                     if v.value_id not in value_ids:
                         value_ids.append(v.value_id)
                 ids = tuple(a.assumption_id for a in used_assumptions)
+                fallback = {f for v in inputs for f in v.fallback_for}
+                if rule.fallback_for is not None:
+                    fallback.add(metric_id)
                 series[metric_id][year] = ForecastValue(
                     value_id=make_forecast_id(self.company_id, scenario, metric_id, year, ids + tuple(value_ids)),
                     company_id=self.company_id, scenario=scenario, metric_id=metric_id, fiscal_year=year,
@@ -177,6 +180,7 @@ class _Projector:
                     method=rule.method, formula=rule.formula, assumption_ids=ids,
                     assumption_types=tuple(a.type.value for a in used_assumptions),
                     input_value_ids=tuple(value_ids), input_fact_ids=tuple(fact_ids),
+                    fallback_for=tuple(sorted(fallback)),
                 )
         return {k: dict(v) for k, v in series.items() if v}
 
@@ -193,8 +197,8 @@ class _Projector:
                 raise NotProjected(f"{reason}:{rule.metric_id}")
             # Compounding a rate onto a non-positive starting value is the same error the
             # historical analytics refuse, made once and then repeated for every year of the
-            # horizon. JPMorgan's FY2025 operating cash flow was -147.8bn; multiplying it by
-            # (1 + a rate) produced -38.7bn, -10.1bn, -2.7bn, -697m, -183m — a decay toward zero
+            # horizon. A bank whose base-year operating cash flow was -147.8bn had it multiplied
+            # by (1 + a rate) into -38.7bn, -10.1bn, -2.7bn, -697m, -183m — a decay toward zero
             # that the forecast table presented exactly like its deposit projection. There is no
             # rate that makes this meaningful, so the refusal belongs at the starting point.
             if prior.value <= 0:
@@ -226,7 +230,6 @@ def run_forecast(framework: IndustryFramework, *, company_id: str, facts: Iterab
                  scenarios: Iterable = (), forecast_years: int = 5) -> ForecastResult:
     facts = list(facts)
     analytics = list(analytics)
-    graph = build_driver_graph(framework)
 
     annual = [f for f in facts if f.period.fiscal_period is FiscalPeriodCode.FY]
     if not annual:
@@ -235,6 +238,9 @@ def run_forecast(framework: IndustryFramework, *, company_id: str, facts: Iterab
     base_year = max(f.period.fiscal_year for f in annual)
     base_facts = {f.metric_id: f for f in annual if f.period.fiscal_year == base_year}
     years = tuple(range(base_year + 1, base_year + 1 + forecast_years))
+    # The plan depends on what this company actually reports: a driver whose formula needs a
+    # metric with no base-year value takes its declared fallback, if the framework gave it one.
+    graph = build_driver_graph(framework, available=frozenset(base_facts))
 
     seeded, unseeded = seed_assumptions(framework, graph, company_id=company_id, facts=facts,
                                         analytics=analytics, base_year=base_year)

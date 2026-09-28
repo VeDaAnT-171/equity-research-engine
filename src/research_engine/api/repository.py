@@ -111,7 +111,9 @@ class CompanyWorkspace:
         self.require("analyze")
         if fmt not in ("svg", "png"):
             raise UnknownChart(chart_id)
-        rendered = {c["chart_id"] for c in self.chart_index()}
+        # A chart the index records as skipped has no current image, whatever is on disk. A file
+        # left by an earlier run would otherwise be served as though it described today's data.
+        rendered = {c["chart_id"] for c in self.chart_index() if not c.get("skipped")}
         if chart_id not in rendered:
             raise UnknownChart(chart_id)
         path = (self.charts / f"{chart_id}.{fmt}").resolve()
@@ -143,7 +145,10 @@ class CompanyWorkspace:
         self.require("forecast")
         if fmt not in ("svg", "png"):
             raise UnknownChart(chart_id)
-        if chart_id not in {c["chart_id"] for c in self.forecast_chart_index()}:
+        # Same rule as chart_file. This was live: an operating-cash-flow projection rendered by an
+        # earlier run stayed on disk after the metric stopped being projected, the index correctly
+        # marked it skipped, and this endpoint served the stale picture anyway.
+        if chart_id not in {c["chart_id"] for c in self.forecast_chart_index() if not c.get("skipped")}:
             raise UnknownChart(chart_id)
         path = (self.forecast_charts / f"{chart_id}.{fmt}").resolve()
         if not path.is_file() or self.forecast_charts.resolve() not in path.parents:
@@ -288,6 +293,9 @@ def forecast_of(ws: CompanyWorkspace) -> dict[str, Any]:
             "fiscal_year": row["fiscal_year"], "value": row["value"], "method": row["method"],
             "formula": row["formula"], "assumption_ids": list(row["assumption_ids"] or ()),
             "assumption_types": list(row["assumption_types"] or ()), "value_id": row["value_id"],
+            # .get: a forecast written before fallbacks existed has no such column, and "no
+            # fallback recorded" is the truthful reading of it.
+            "fallback_for": list(row.get("fallback_for") or ()),
         })
     for scenario in by_scenario.values():
         for metric in scenario.values():
@@ -305,6 +313,7 @@ def forecast_of(ws: CompanyWorkspace) -> dict[str, Any]:
         "not_projected": doc.get("not_projected", {}),
         "unseeded": doc.get("unseeded", {}),
         "demoted_derivations": doc.get("demoted_derivations", {}),
+        "fallbacks": doc.get("fallbacks", {}),
         "unresolved_targets": doc.get("unresolved_targets", {}),
         "assumptions_file": manifest.get("assumptions_file"),
     }

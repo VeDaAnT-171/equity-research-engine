@@ -267,6 +267,7 @@ td.wrap { min-width: 22ch; }
 .b-derivation { color: var(--teal);   background: #56d4c115; border-color: #56d4c140; }
 .b-growth     { color: var(--amber);  background: #f0b84915; border-color: #f0b84940; }
 .b-level      { color: var(--violet); background: #c0a9ff15; border-color: #c0a9ff40; }
+.b-fallback   { color: var(--warn);   background: transparent; border-color: currentColor; border-style: dashed; }
 
 .b-scenario            { color: var(--violet); background: #c0a9ff15; border-color: #c0a9ff40; }
 .b-analyst_assumption  { color: var(--accent); background: #6cb4ff15; border-color: #6cb4ff40; }
@@ -326,6 +327,10 @@ td.wrap { min-width: 22ch; }
   border-left: 3px solid var(--warn, #b24a3b);
   background: var(--warn-bg, rgba(178, 74, 59, 0.06));
 }
+
+/* The fallback mark is a glyph, not a colour, so it survives print and colour-blindness; the
+   weight and spacing only keep it from reading as part of the number. */
+.fbmark { margin-left: 2px; font-weight: 700; color: var(--warn, #b24a3b); }
 
 details.data-table { border-top: 1px solid var(--border); }
 details.data-table > summary {

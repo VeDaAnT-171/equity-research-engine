@@ -59,9 +59,13 @@ def test_assumptions_json_records_the_plan_and_every_refusal(prepared, tmp_path,
     assert doc["resolution_order"] == ["scenario", "analyst_assumption", "management_guidance",
                                        "consensus", "historical"]
     plan = {row["metric_id"]: row for row in doc["projection_plan"]}
-    assert plan["net_interest_income"]["method"] == "driver_formula"
-    assert plan["net_interest_margin"]["method"] == "level"
-    assert "net_interest_margin" in doc["demoted_derivations"]
+    # The fixture, like every filer read from XBRL alone, has no average interest-earning assets,
+    # so the declared NII driver cannot run and its declared fallback is taken — and recorded.
+    assert plan["net_interest_income"]["method"] == "growth"
+    assert plan["net_interest_income"]["fallback_for"] == "net_interest_income_engine"
+    assert "average_interest_earning_assets" in doc["fallbacks"]["net_interest_income"]
+    # with the driver unused, the margin is not pulled into the plan, so nothing is demoted
+    assert "net_interest_margin" not in plan and not doc["demoted_derivations"]
     # the sparse fixture cannot support most of the chain; every gap is named, none is filled in
     assert doc["unseeded"] and doc["not_projected"]
     assert all(":" in key for key in doc["not_projected"])

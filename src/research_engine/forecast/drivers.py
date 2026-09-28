@@ -20,11 +20,22 @@ income). Applying both inside one period is circular. Forward, the margin is the
 income is the output, so when a derivation would close a cycle, the metric in that cycle which
 another driver formula models *with* is demoted to exogenous. The demotion is recorded and shown
 in the forecast report; it is never silent.
+
+**Fallbacks.** A driver formula is only a model if the company reports what it models with. A
+bank's net interest income is earning assets times margin, but average interest-earning assets
+has no standard XBRL element, so for any filer read from structured data alone that formula has
+nothing to multiply and the whole income statement below it goes unprojected. A driver may
+declare `fallback: trend`: when a metric its formula needs has no base-year value for this
+company, the metrics it affects are projected on their own history instead. The substitution is
+recorded on the graph, and the projector marks every value that depends on it, however far
+downstream — a revenue line built from a trend-extrapolated income line is not the modelled
+revenue line, and a reader has to be able to tell.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Collection
+from dataclasses import dataclass, field, replace
 
 from ..errors import ForecastError
 from ..expressions import referenced_names
@@ -44,6 +55,7 @@ class ProjectionRule:
     metric_inputs: tuple[str, ...] = ()      # same-year metric dependencies
     assumption_keys: tuple[str, ...] = ()    # exogenous inputs resolved from the registry
     reason: str = ""                         # why this rule and not another
+    fallback_for: str | None = None          # the declared driver this rule stands in for
 
     @property
     def is_exogenous(self) -> bool:
@@ -58,6 +70,7 @@ class DriverGraph:
     assumption_keys: tuple[str, ...] = ()
     unresolved: dict[str, str] = field(default_factory=dict)
     demoted: dict[str, str] = field(default_factory=dict)
+    fallbacks: dict[str, str] = field(default_factory=dict)  # metric -> why its driver was not used
 
     def rule(self, metric_id: str) -> ProjectionRule:
         return self.rules[metric_id]
@@ -106,16 +119,33 @@ def _topological(rules: dict[str, ProjectionRule]) -> tuple[str, ...]:
     return tuple(order)
 
 
-def build_driver_graph(framework: IndustryFramework, *, extra_targets: tuple[str, ...] = ()) -> DriverGraph:
+def build_driver_graph(framework: IndustryFramework, *, extra_targets: tuple[str, ...] = (),
+                       available: Collection[str] | None = None) -> DriverGraph:
+    """Plan how every forecast target is produced.
+
+    `available` is the set of metrics this company has a base-year value for. Without it the plan
+    is the framework's alone and no fallback is taken; with it, a driver whose formula needs a
+    metric outside that set uses its declared fallback, if it has one.
+    """
     metrics = {m.id: m for m in framework.metrics}
     analytic_ids = framework.analytic_ids
 
+    fallen_back: dict[str, tuple[str, str]] = {}  # metric -> (driver id, reason)
     formula_by_metric: dict[str, tuple[str, str]] = {}
     consumed_by_formula: set[str] = set()
     for d in framework.drivers:
         if not d.formula:
             continue
-        consumed_by_formula |= {n for n in referenced_names(d.formula) if n in metrics}
+        needs = sorted(n for n in referenced_names(d.formula) if n in metrics)
+        missing = [n for n in needs if available is not None and n not in available]
+        if missing and d.fallback == "trend":
+            reason = (f"fallback: driver {d.id!r} (`{d.formula}`) needs {', '.join(missing)}, which "
+                      "this company does not report for the base year, so the metric is projected on "
+                      "its own history instead")
+            for target in d.affects:
+                fallen_back[target] = (d.id, reason)
+            continue
+        consumed_by_formula |= set(needs)
         for target in d.affects:
             formula_by_metric[target] = (d.id, d.formula)
 
@@ -139,6 +169,9 @@ def build_driver_graph(framework: IndustryFramework, *, extra_targets: tuple[str
         spec = metrics[metric_id]
         if metric_id in demoted:
             return exogenous(metric_id, demoted[metric_id])
+        if metric_id in fallen_back:
+            driver_id, reason = fallen_back[metric_id]
+            return replace(exogenous(metric_id, reason), fallback_for=driver_id)
         if metric_id in formula_by_metric:
             driver_id, formula = formula_by_metric[metric_id]
             names = sorted(referenced_names(formula))
@@ -206,5 +239,7 @@ def build_driver_graph(framework: IndustryFramework, *, extra_targets: tuple[str
 
     order = _topological(rules)
     keys = sorted({k for r in rules.values() for k in r.assumption_keys})
+    fallbacks = {m: fallen_back[m][1] for m in rules if m in fallen_back}
     return DriverGraph(rules=rules, order=order, targets=tuple(known_targets),
-                       assumption_keys=tuple(keys), unresolved=unresolved, demoted=demoted)
+                       assumption_keys=tuple(keys), unresolved=unresolved, demoted=demoted,
+                       fallbacks=fallbacks)

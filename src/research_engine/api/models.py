@@ -139,6 +139,9 @@ class ForecastPoint(Model):
     assumption_ids: list[str] = []
     assumption_types: list[str] = []
     value_id: str
+    fallback_for: list[str] = Field(
+        default=[], description="Metrics projected by fallback rather than their declared driver that "
+                                "this value depends on; empty when the declared model produced every input.")
 
 
 class ForecastMetric(Model):
@@ -163,6 +166,7 @@ class ProjectionRule(Model):
     reason: str = ""
     metric_inputs: list[str] = []
     assumption_keys: list[str] = []
+    fallback_for: str | None = None
 
 
 class Forecast(Model):
@@ -173,6 +177,7 @@ class Forecast(Model):
     not_projected: dict[str, int] = {}
     unseeded: dict[str, str] = {}
     demoted_derivations: dict[str, str] = {}
+    fallbacks: dict[str, str] = {}
     unresolved_targets: dict[str, str] = {}
     assumptions_file: str | None = None
 

@@ -61,6 +61,12 @@ class ForecastValue(StrictModel):
     # Lineage: prior-year or same-year forecast values, and the base-year facts underneath.
     input_value_ids: tuple[str, ...] = ()
     input_fact_ids: tuple[str, ...] = ()
+    # Metrics that were projected on their own trend because the driver the framework declares
+    # for them could not run, and that this value depends on — itself included. Empty means every
+    # input was produced by the model the framework actually specifies. Carried on the value,
+    # rather than left in the graph, because the reader of a revenue figure should not need to
+    # walk its lineage to learn that half of it is an extrapolated trend.
+    fallback_for: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _lineage(self) -> ForecastValue:
