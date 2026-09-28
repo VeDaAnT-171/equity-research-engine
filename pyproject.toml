@@ -48,7 +48,11 @@ ignore = [
 known-first-party = ["research_engine"]
 
 [tool.mypy]
-python_version = "3.10"
+# `python_version` is deliberately not pinned. Setting it makes mypy parse *dependency stubs*
+# as that version too, and modern stubs (numpy's, for one) use syntax newer than our floor —
+# which aborts the whole run with a fatal error rather than a type error. The 3.10 floor is
+# enforced where it belongs instead: ruff's target-version for syntax, and CI running the test
+# suite on 3.10.
 files = ["src/research_engine"]
 ignore_missing_imports = true
 # Strict optional is the remaining gap: roughly fifty Optional-narrowing errors live in code
@@ -58,6 +62,13 @@ strict_optional = false
 warn_redundant_casts = true
 warn_unused_ignores = true
 no_implicit_optional = true
+
+# Third-party stubs are not ours to type-check, and their syntax should never be able to fail
+# our run. We check how we *use* these libraries, not how they are written.
+[[tool.mypy.overrides]]
+module = ["numpy.*", "matplotlib.*", "pyarrow.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
 
 [tool.coverage.run]
 source = ["research_engine"]
