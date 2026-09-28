@@ -24,6 +24,7 @@ from ..schemas.financial import FinancialFact, FiscalPeriodCode
 from ..schemas.forecast import BASE_SCENARIO, ForecastValue, make_forecast_id
 from ..schemas.framework import IndustryFramework
 from .assumptions import (
+    SEED_WINDOW_YEARS,
     AssumptionSet,
     AssumptionUnavailable,
     annual_analytic_series,
@@ -58,8 +59,8 @@ class ForecastResult:
 
 
 def seed_assumptions(framework: IndustryFramework, graph: DriverGraph, *, company_id: str,
-                     facts: Iterable[FinancialFact],
-                     analytics: Iterable[AnalyticValue]) -> tuple[list[Assumption], dict[str, str]]:
+                     facts: Iterable[FinancialFact], analytics: Iterable[AnalyticValue],
+                     base_year: int) -> tuple[list[Assumption], dict[str, str]]:
     """One `historical` assumption per exogenous input the graph needs, from verified history."""
     metric_series = annual_metric_series(facts)
     analytic_series = annual_analytic_series(analytics)
@@ -75,10 +76,12 @@ def seed_assumptions(framework: IndustryFramework, graph: DriverGraph, *, compan
             if seed is None:
                 unseeded[key] = f"no annual history for metric {name!r}"
                 continue
-            assumption = seed_growth(company_id, name, seed)
+            assumption = seed_growth(company_id, name, seed, base_year=base_year)
             if assumption is None:
-                unseeded[key] = (f"fewer than two consecutive years of {name!r}, or a non-positive base, "
-                                 "so no growth rate can be measured")
+                unseeded[key] = (
+                    f"no usable year-on-year observation of {name!r} in "
+                    f"FY{base_year - SEED_WINDOW_YEARS + 1}-FY{base_year}: the series is stale, "
+                    "discontinuous, or crosses zero there, so no growth rate can be measured")
         elif prefix == "level":
             seed = metric_series.get(name)
             if seed is None:
@@ -87,18 +90,21 @@ def seed_assumptions(framework: IndustryFramework, graph: DriverGraph, *, compan
             spec = metrics[name]
             assumption = seed_level(company_id, name, seed, key=key,
                                     unit="ratio" if spec.unit_kind == "ratio" else (spec.unit_kind or "ratio"),
-                                    label="level of")
+                                    label="level of", base_year=base_year)
             if assumption is None:
-                unseeded[key] = f"no usable annual observations of {name!r}"
+                unseeded[key] = (f"no annual observations of {name!r} in "
+                                 f"FY{base_year - SEED_WINDOW_YEARS + 1}-FY{base_year}")
         elif prefix == "rate":
             seed = analytic_series.get(name)
             if seed is None:
                 unseeded[key] = (f"analytic {name!r} was not computed in the historical analysis, "
                                  "so no rate can be seeded from it")
                 continue
-            assumption = seed_level(company_id, name, seed, key=key, unit="ratio", label="")
+            assumption = seed_level(company_id, name, seed, key=key, unit="ratio", label="",
+                                    base_year=base_year)
             if assumption is None:
-                unseeded[key] = f"analytic {name!r} has no values with traceable input facts"
+                unseeded[key] = (f"analytic {name!r} has no traceable values in "
+                                 f"FY{base_year - SEED_WINDOW_YEARS + 1}-FY{base_year}")
         else:  # pragma: no cover - build_driver_graph emits no other prefixes
             unseeded[key] = f"unknown assumption namespace {prefix!r}"
         if assumption is not None:
@@ -185,6 +191,14 @@ class _Projector:
             if prior is None:
                 reason = "base_year_actual_missing" if year - 1 == self.base_year else "prior_year_not_projected"
                 raise NotProjected(f"{reason}:{rule.metric_id}")
+            # Compounding a rate onto a non-positive starting value is the same error the
+            # historical analytics refuse, made once and then repeated for every year of the
+            # horizon. JPMorgan's FY2025 operating cash flow was -147.8bn; multiplying it by
+            # (1 + a rate) produced -38.7bn, -10.1bn, -2.7bn, -697m, -183m — a decay toward zero
+            # that the forecast table presented exactly like its deposit projection. There is no
+            # rate that makes this meaningful, so the refusal belongs at the starting point.
+            if prior.value <= 0:
+                raise NotProjected(f"growth_base_not_positive:{rule.metric_id}")
             a = self._resolve(rule.assumption_keys[0], year, scenario)
             return prior.value * (Decimal(1) + a.value), [a], [prior]
 
@@ -222,7 +236,8 @@ def run_forecast(framework: IndustryFramework, *, company_id: str, facts: Iterab
     base_facts = {f.metric_id: f for f in annual if f.period.fiscal_year == base_year}
     years = tuple(range(base_year + 1, base_year + 1 + forecast_years))
 
-    seeded, unseeded = seed_assumptions(framework, graph, company_id=company_id, facts=facts, analytics=analytics)
+    seeded, unseeded = seed_assumptions(framework, graph, company_id=company_id, facts=facts,
+                                        analytics=analytics, base_year=base_year)
     registry = AssumptionSet([*seeded, *analyst_assumptions], scenarios)
 
     result = ForecastResult(base_year=base_year, forecast_years=years, graph=graph, assumptions=registry,

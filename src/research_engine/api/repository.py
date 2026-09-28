@@ -379,6 +379,8 @@ def chart_data(ws: CompanyWorkspace, chart_id: str) -> dict[str, Any]:
         "currency": currency,
         "columns": ["series", *[f"FY{y}" for y in years]],
         "rows": rows,
+        "notes": list(record.get("notes") or []),
+        "truncated": dict(record.get("truncated") or {}),
     }
 
 

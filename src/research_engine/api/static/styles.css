@@ -315,6 +315,18 @@ td.wrap { min-width: 22ch; }
   color: var(--muted); font-size: 0.78rem; border-top: 1px solid var(--border);
 }
 
+/* A caveat on a chart has to be legible without colour: the left rule and the bold lead-in carry
+   it for a monochrome print or a reader who cannot distinguish the tint. */
+.chartnote {
+  margin: 0; padding: 10px 16px; font-size: 0.78rem; line-height: 1.45;
+  color: var(--muted); border-top: 1px solid var(--border);
+}
+.chartnote strong { color: var(--text); font-weight: 600; }
+.chartnote.incomplete {
+  border-left: 3px solid var(--warn, #b24a3b);
+  background: var(--warn-bg, rgba(178, 74, 59, 0.06));
+}
+
 details.data-table { border-top: 1px solid var(--border); }
 details.data-table > summary {
   cursor: pointer; padding: 10px 16px; min-height: 44px; display: flex; align-items: center;

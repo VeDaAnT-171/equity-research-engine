@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -54,6 +55,11 @@ class ChartRecord:
     flagged_points: int
     skipped: str | None = None
     notes: list[str] = field(default_factory=list)
+    # series id -> the last fiscal year it has a value for, when that is before the end of the
+    # company's reporting span. A line that simply stops is the one failure a chart cannot show
+    # by itself: the picture looks complete, and the reader has no way to tell a metric that
+    # ended from a metric whose input the engine lost.
+    truncated: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -85,9 +91,24 @@ def _currency_formatter(max_abs: float, currency: str):
     return FuncFormatter(lambda v, _: f"{v:,.0f}"), currency
 
 
+def _reason_for(series_id: str, not_computed: Mapping[str, int] | None) -> str | None:
+    """The most frequent reason the analytics recorded for this series, if any.
+
+    `not_computed` is keyed `<analytic id>:<reason>`, so the reason a series stopped is already
+    on record — it simply never reached the picture.
+    """
+    if not not_computed:
+        return None
+    prefix = f"{series_id}:"
+    reasons = [(k[len(prefix):], n) for k, n in not_computed.items() if k.startswith(prefix)]
+    return max(reasons, key=lambda kv: kv[1])[0] if reasons else None
+
+
 def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[FinancialFact],
                  analytics: dict[str, dict[int, AnalyticValue]], flagged_fact_ids: set[str], out_dir: Path,
-                 *, company_label: str, engine_version: str) -> ChartRecord:
+                 *, company_label: str, engine_version: str,
+                 coverage_years: Sequence[int] = (),
+                 not_computed: Mapping[str, int] | None = None) -> ChartRecord:
     data = {sid: series_points(sid, framework, facts, analytics, flagged_fact_ids) for sid in spec.series}
     data = {sid: pts for sid, pts in data.items() if pts}
     record = ChartRecord(spec.id, spec.title, [], {sid: [p.lineage_id for p in pts] for sid, pts in data.items()}, [], 0, 0)
@@ -102,8 +123,23 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
         record.skipped = "currency_not_uniform"
         return record
 
-    years = sorted({p.year for pts in data.values() for p in pts})
+    # The axis runs to the end of the company's reporting span, not to the end of whichever series
+    # happens to reach furthest. Drawing only as far as the data goes turns a metric that died in
+    # 2015 into a chart that looks complete, which is how a nine-year hole in a bank's loan book
+    # reached a reader as a finished picture of its credit costs. It is never extended backwards:
+    # a series that starts late started when its tagging did, which is not a gap.
+    data_years = sorted({p.year for pts in data.values() for p in pts})
+    years = sorted(set(data_years) | {y for y in coverage_years if y >= data_years[0]})
     record.years = years
+    for sid, pts in data.items():
+        last = pts[-1].year
+        if last < years[-1]:
+            record.truncated[sid] = last
+            reason = _reason_for(sid, not_computed)
+            record.notes.append(
+                f"{_label(sid, framework)} has no value after FY{last}"
+                + (f" ({reason})" if reason else "")
+            )
     x_of = {y: i for i, y in enumerate(years)}
     fig, ax = plt.subplots(figsize=(7.2, 3.8), dpi=150)
     n = len(data)
@@ -158,6 +194,9 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
         footnote += " Hollow markers / hatched bars: derived by the engine."
     if record.flagged_points:
         footnote += " †: an input was flagged by data-quality checks."
+    if record.truncated:
+        ends = "; ".join(f"{_label(sid, framework)} ends FY{y}" for sid, y in sorted(record.truncated.items()))
+        footnote += f" Incomplete over the period shown — {ends}."
     fig.text(0.01, 0.01, footnote, fontsize=7, color="#5b6470")
     fig.tight_layout(rect=(0, 0.05 if len(spec.series) <= 1 else 0.08, 1, 1))
 
@@ -171,6 +210,10 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
 
 
 def render_charts(framework: IndustryFramework, facts: list[FinancialFact], analytics: dict[str, dict[int, AnalyticValue]],
-                  flagged_fact_ids: set[str], out_dir: Path, *, company_label: str, engine_version: str) -> list[ChartRecord]:
+                  flagged_fact_ids: set[str], out_dir: Path, *, company_label: str, engine_version: str,
+                  coverage_years: Sequence[int] = (),
+                  not_computed: Mapping[str, int] | None = None) -> list[ChartRecord]:
     return [render_chart(spec, framework, facts, analytics, flagged_fact_ids, out_dir,
-                         company_label=company_label, engine_version=engine_version) for spec in framework.charts]
+                         company_label=company_label, engine_version=engine_version,
+                         coverage_years=coverage_years, not_computed=not_computed)
+            for spec in framework.charts]

@@ -20,7 +20,7 @@ Every projected value records which assumption id and which rung it used.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -29,6 +29,7 @@ import yaml
 from pydantic import ValidationError
 
 from ..errors import ConfigError, format_validation_error
+from ..growth import growth_refusal
 from ..schemas.analytics import AnalyticValue
 from ..schemas.assumption import Assumption, AssumptionType
 from ..schemas.financial import FinancialFact, FiscalPeriodCode
@@ -37,6 +38,22 @@ from ..schemas.forecast import BASE_SCENARIO, ScenarioSpec
 # Trailing fiscal years used to seed a historical assumption. A single year is noise;
 # a long window buries regime changes. Three is a stated convention, not a discovery.
 SEED_WINDOW_YEARS = 3
+
+# The window is anchored to the forecast's base year, not to whichever years a metric happens to
+# have. Taking the last three *observations* instead reaches back across every gap: JPMorgan's
+# loans series ended in FY2015, and a growth rate measured over FY2013-FY2015 was still seeded and
+# would have compounded to FY2030 had the base year value survived. The same reach kept a decaying
+# operating-cash-flow projection alive after the sign-crossing pairs it rested on were refused —
+# the seeder simply stepped back over the refusals and stitched FY2019, FY2022 and FY2023 together
+# into something it described as three observations. How *many* of the window's years must be
+# usable is deliberately not a rule here: a company with two years of history has a measurable,
+# fragile growth rate, and refusing it would be a judgement about sample size rather than about
+# whether the measurement means anything.
+
+
+def _window(base_year: int) -> range:
+    """The fiscal years a historical assumption may be measured over."""
+    return range(base_year - SEED_WINDOW_YEARS + 1, base_year + 1)
 
 PRIORITY: dict[AssumptionType, int] = {
     AssumptionType.SCENARIO: 0,
@@ -80,10 +97,6 @@ def _median(values: list[Decimal]) -> Decimal:
     n = len(ordered)
     mid = n // 2
     return ordered[mid] if n % 2 else (ordered[mid - 1] + ordered[mid]) / 2
-
-
-def _trailing(series: Mapping[int, Decimal], years: list[int]) -> list[int]:
-    return [y for y in years if y in series][-SEED_WINDOW_YEARS:]
 
 
 @dataclass
@@ -131,16 +144,25 @@ def annual_analytic_series(values: Iterable[AnalyticValue]) -> dict[str, SeedInp
     return out
 
 
-def seed_growth(company_id: str, metric_id: str, seed: SeedInput) -> Assumption | None:
-    """Median year-on-year growth over the trailing window. None when history cannot support it."""
-    years = sorted(seed.values)
+def seed_growth(company_id: str, metric_id: str, seed: SeedInput, *, base_year: int) -> Assumption | None:
+    """Median year-on-year growth over the window ending at the base year.
+
+    Returns None unless the window itself holds enough usable pairs. Refusing to seed is the
+    honest outcome for a series that is stale, or that spends the recent past crossing zero: the
+    forecast then reports the metric as not projected, which is true, rather than carrying a rate
+    assembled from whichever old years happened to survive.
+    """
     pairs: list[tuple[int, Decimal]] = []
-    for y in years:
+    for y in _window(base_year):
         prior = seed.values.get(y - 1)
-        if prior is None or prior <= 0:
+        current = seed.values.get(y)
+        # Same test the historical analytics apply, for the same reason: a median taken over
+        # pairs that straddle zero is not a trend, and this one gets compounded forward.
+        if current is None or growth_refusal(prior, current) is not None:
             continue
-        pairs.append((y, seed.values[y] / prior - 1))
-    used = pairs[-SEED_WINDOW_YEARS:]
+        assert prior is not None  # growth_refusal rejects None
+        pairs.append((y, current / prior - 1))
+    used = pairs
     if not used:
         return None
     fact_ids: list[str] = []
@@ -160,9 +182,15 @@ def seed_growth(company_id: str, metric_id: str, seed: SeedInput) -> Assumption 
 
 
 def seed_level(company_id: str, name: str, seed: SeedInput, *, key: str, unit: str,
-               label: str) -> Assumption | None:
-    """Median level over the trailing window, for rates and ratios that are states, not growth."""
-    years = _trailing(seed.values, sorted(seed.values))
+               label: str, base_year: int) -> Assumption | None:
+    """Median level over the window ending at the base year.
+
+    A level is a state rather than a rate, so one observation inside the window is usable where
+    one growth pair is not. What is never usable is a state read off a year the company has long
+    since left behind: a credit-loss rate last observable in FY2015 is not this bank's credit-loss
+    rate, and seeding it would put a decade-old number into a five-year projection.
+    """
+    years = [y for y in _window(base_year) if y in seed.values]
     if not years:
         return None
     fact_ids: list[str] = []

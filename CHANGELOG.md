@@ -9,6 +9,41 @@ filing, so no interface here should be treated as stable.
 
 ## [Unreleased]
 
+### Fixed
+
+Both of these were found by the first run against live SEC data (JPMorgan Chase, CIK 0000019617,
+FY2007–FY2025). Neither was reachable with the synthetic fixtures the test suite had used until
+now, because both need a real filer's irregularities to appear.
+
+- **Year-on-year growth is refused whenever the series crosses zero, not only when the base is
+  non-positive.** The old test caught `-100 -> -50` and let `+100 -> -50` through, which computes
+  to -150%: a figure that reads as a rate and is not one. JPMorgan's operating cash flow swings
+  either side of zero, so the historical table carried entries of -2052.8% and -423.8% and a
+  median over them; the forecast seeder applied the same one-sided test, took that median, and
+  compounded it five years into a decay toward zero presented exactly like every other projection.
+  The predicate now lives in `research_engine.growth` and both stages call it, so they cannot
+  disagree again. A refusal names its case — `growth_base_not_positive` or `growth_sign_change`.
+- **A growth projection is refused when the base-year value is not positive.** Removing the
+  sign-crossing pairs from the *seed* was not enough: the seeder stepped back over the refused
+  years, stitched FY2019, FY2022 and FY2023 into what it described as three observations, and the
+  projection carried on decaying. No rate makes `-147.8bn x (1 + r)` mean anything, so the refusal
+  now sits at the starting point, where it holds regardless of how the rate was measured.
+- **Historical assumptions are seeded from the window ending at the base year**, rather than from
+  a metric's last three observations wherever they fall. The old rule reached across every gap:
+  JPMorgan's loans series ended in FY2015 and still produced a growth assumption measured over
+  FY2013–FY2015, described without qualification, eleven years stale. How many of the window's
+  years must be usable is deliberately not a rule — a company with two years of history has a
+  fragile but real growth rate, and refusing it would be a judgement about sample size rather than
+  about whether the measurement means anything.
+- **Charts state where a series stops.** The x-axis was drawn to the last year with data, so a
+  metric that died mid-history produced a chart that looked complete. JPMorgan stopped using the
+  loans concept the bank framework declares after FY2015, and the credit-cost chart ran 2009–2015
+  in silence while the analytics table beside it correctly showed dashes through FY2025 — the
+  record was right and the picture, which is what gets read, was not. The axis now runs to the end
+  of the company's reporting span, the reason each series ended travels to the chart, its data
+  table and the dashboard, and the rendered image carries it in the footnote. The axis is never
+  extended backwards: a series that starts late started when its tagging did.
+
 ### Not yet built
 
 - Valuation and reverse valuation (roadmap phase 6)

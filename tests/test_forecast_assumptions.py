@@ -40,7 +40,7 @@ def test_growth_seed_is_the_median_of_the_trailing_window():
              [(2020, 100), (2021, 200), (2022, 220), (2023, 242), (2024, 266.2)]]
     seed = SeedInput({f.period.fiscal_year: f.value for f in facts},
                      {f.period.fiscal_year: (f.fact_id,) for f in facts})
-    a = seed_growth("test-co", "revenue", seed)
+    a = seed_growth("test-co", "revenue", seed, base_year=2024)
     # trailing three growth observations are all 10%; the 100% step in 2021 falls outside the window
     assert a.value == Decimal("0.1")
     assert a.type is AssumptionType.HISTORICAL
@@ -49,13 +49,46 @@ def test_growth_seed_is_the_median_of_the_trailing_window():
 
 def test_growth_seed_refuses_a_non_positive_base():
     seed = SeedInput({2023: Decimal(0), 2024: Decimal(50)}, {2023: ("fact_a" * 4,), 2024: ("fact_b" * 4,)})
-    assert seed_growth("test-co", "revenue", seed) is None
+    assert seed_growth("test-co", "revenue", seed, base_year=2024) is None
+
+
+def test_growth_seed_refuses_pairs_that_cross_zero():
+    """The seeder has to refuse exactly what the analytics refuse, or the two disagree.
+
+    Operating cash flow swinging +107bn -> +13bn -> -42bn -> -148bn is a real series. Skipping
+    only the non-positive *bases* leaves the sign-crossing pairs in, and their median becomes a
+    growth rate that gets compounded five years forward into a decay toward zero.
+    """
+    values = {2021: Decimal(107), 2022: Decimal(13), 2023: Decimal(-42), 2024: Decimal(-148)}
+    seed = SeedInput(values, {y: (f"fact_{y}" + "a" * 11,) for y in values})
+    # FY2022-FY2024 is the window; 2023 and 2024 both cross zero, leaving only the 2022 pair
+    a = seed_growth("test-co", "operating_cash_flow", seed, base_year=2024)
+    assert a is not None and a.value == Decimal(13) / Decimal(107) - 1
+    assert "FY2022-FY2022" in a.description
+
+
+def test_growth_seed_returns_nothing_when_every_pair_crosses_zero():
+    values = {2023: Decimal(-42), 2024: Decimal(-148)}
+    seed = SeedInput(values, {y: (f"fact_{y}" + "a" * 11,) for y in values})
+    assert seed_growth("test-co", "operating_cash_flow", seed, base_year=2024) is None
+
+
+def test_growth_seed_ignores_history_older_than_the_window():
+    """The window is anchored to the base year, not to the metric's own last observation.
+
+    JPMorgan stopped reporting the loans concept this framework declares after FY2015. Taking the
+    last three *observations* seeded a growth rate measured over FY2013-FY2015 and described it
+    without qualification, eleven years after the series ended.
+    """
+    values = {y: Decimal(v) for y, v in [(2013, 100), (2014, 103), (2015, 106)]}
+    seed = SeedInput(values, {y: (f"fact_{y}" + "a" * 11,) for y in values})
+    assert seed_growth("test-co", "loans", seed, base_year=2025) is None
 
 
 def test_growth_seed_needs_two_consecutive_years():
     facts = [reported("revenue", 100, fy(2024))]
     seed = SeedInput({2024: facts[0].value}, {2024: (facts[0].fact_id,)})
-    assert seed_growth("test-co", "revenue", seed) is None
+    assert seed_growth("test-co", "revenue", seed, base_year=2024) is None
 
 
 def test_level_seed_uses_the_median_level():
@@ -64,8 +97,11 @@ def test_level_seed_uses_the_median_level():
     seed = SeedInput({f.period.fiscal_year: f.value for f in facts},
                      {f.period.fiscal_year: (f.fact_id,) for f in facts})
     a = seed_level("test-co", "net_interest_margin", seed, key="level.net_interest_margin",
-                   unit="ratio", label="level of")
+                   unit="ratio", label="level of", base_year=2024)
     assert a.value == Decimal("0.03")
+    # a state read off years the company has left behind is not this company's state
+    assert seed_level("test-co", "net_interest_margin", seed, key="level.net_interest_margin",
+                      unit="ratio", label="level of", base_year=2030) is None
 
 
 def test_analytic_lineage_resolves_through_intermediate_analytics():

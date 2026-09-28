@@ -132,7 +132,8 @@ def run_analysis_stage(config: ProjectConfig, *, workspace: Path, frameworks: Fr
     versions = version_stamp()
     label = f"{config.company.name} ({config.company.ticker})"
     charts = render_charts(framework, current, result.by_analytic, flagged, out / "charts",
-                           company_label=label, engine_version=versions["engine_version"])
+                           company_label=label, engine_version=versions["engine_version"],
+                           coverage_years=result.fiscal_years, not_computed=result.not_computed)
 
     # Lineage: chart -> analytic value -> fact -> document -> source
     registry = DocumentRegistry(workspace / "data" / "registry.sqlite", workspace / "data" / "raw")

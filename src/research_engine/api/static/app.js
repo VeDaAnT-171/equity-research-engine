@@ -118,6 +118,18 @@ const sortableTh = (key, label, cls = '') =>
 
 const plainTh = (label, cls = '') => `<th class="${cls}"><span class="th-inner">${esc(label)}</span></th>`;
 
+/* A chart that stops early looks finished. The engine already recorded why each series ended;
+   this puts that record beside the picture, because the picture is what gets read. Marked as a
+   note rather than an error: an incomplete series is a limit on the chart, not a failed render. */
+function chartNotes(c) {
+  const notes = c.notes || [];
+  if (!notes.length) return '';
+  const incomplete = Object.keys(c.truncated || {}).length > 0;
+  return `<p class="chartnote${incomplete ? ' incomplete' : ''}" role="note">
+    <strong>${incomplete ? 'Incomplete over the period shown.' : 'Note.'}</strong>
+    ${notes.map((n) => esc(n)).join(' ')}</p>`;
+}
+
 function chartDataTable(scope, chartId) {
   return `<details class="data-table" data-chart="${esc(chartId)}" data-scope="${esc(scope)}">
     <summary>Show the numbers behind this chart</summary>
@@ -240,7 +252,11 @@ main.addEventListener('toggle', async (e) => {
       if (c === 'series' || c === 'method') return `<td class="metric">${esc(v ?? '–')}</td>`;
       return `<td class="num">${typeof v === 'number' ? esc(fmtValue(v, d.unit_kind, d.currency)) : '–'}</td>`;
     }).join('')}</tr>`).join('');
-    slot.innerHTML = `<table><caption>${esc(d.title)} — the values plotted above.</caption>
+    // A trailing dash in this table could mean "not reported" or "we lost the input". The chart's
+    // notes say which, so the accessible fallback carries them rather than leaving the reader to
+    // infer it from a row of blanks.
+    const caption = [`${d.title} — the values plotted above.`, ...(d.notes || [])].join(' ');
+    slot.innerHTML = `<table><caption>${esc(caption)}</caption>
       <thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
   } catch (err) {
     slot.innerHTML = `<p class="empty err">${esc(err.message)}</p>`;
@@ -422,6 +438,7 @@ async function viewHistorical() {
           ${c.derived_points ? `<span>${esc(c.derived_points)} derived point(s)</span>` : ''}
           ${c.flagged_points ? `<span>† ${esc(c.flagged_points)} flagged input(s)</span>` : ''}
         </p>
+        ${chartNotes(c)}
         ${chartDataTable('analysis', c.chart_id)}
       </section>`).join('')}</div>` : '';
 

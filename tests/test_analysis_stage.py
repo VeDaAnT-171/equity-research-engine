@@ -102,6 +102,36 @@ def test_chart_rendering_is_deterministic_and_marks_derived(tmp_path, frameworks
     assert single.skipped == "fewer_than_two_points" and not (tmp_path / "c").exists()
 
 
+def test_a_series_that_stops_early_is_recorded_not_silently_cropped(tmp_path, frameworks_dir):
+    """A chart drawn only as far as its data goes looks complete when it is not.
+
+    JPMorgan stopped using the loans concept this framework declares after FY2015, so the credit
+    chart ran 2009-2015 while every sibling metric ran to 2025 — and said nothing. The axis now
+    covers the company's reporting span, and the reason the series ended travels with the chart.
+    """
+    framework = FrameworkRegistry(frameworks_dir).get("generic")
+    facts = [reported("revenue", 100 + i, fy(y)) for i, y in enumerate((2020, 2021, 2022))]
+    spec = ChartSpec(id="revenue", title="Revenue", kind="line", series=("revenue",), format="currency")
+    r = render_chart(spec, framework, facts, {}, set(), tmp_path / "t", company_label="Test",
+                     engine_version="x", coverage_years=[2020, 2021, 2022, 2023, 2024, 2025],
+                     not_computed={"revenue:input_missing:loans": 4})
+    assert r.years == [2020, 2021, 2022, 2023, 2024, 2025], "the axis must show the years it lacks"
+    assert r.truncated == {"revenue": 2022}
+    assert any("no value after FY2022" in n and "input_missing:loans" in n for n in r.notes)
+    assert "Incomplete over the period shown" in (tmp_path / "t" / "revenue.svg").read_text()
+
+
+def test_a_complete_series_gets_no_truncation_note(tmp_path, frameworks_dir):
+    """The note has to stay rare, or it stops being read."""
+    framework = FrameworkRegistry(frameworks_dir).get("generic")
+    facts = [reported("revenue", 100 + i, fy(y)) for i, y in enumerate((2023, 2024, 2025))]
+    spec = ChartSpec(id="revenue", title="Revenue", kind="line", series=("revenue",), format="currency")
+    r = render_chart(spec, framework, facts, {}, set(), tmp_path / "t", company_label="Test",
+                     engine_version="x", coverage_years=[2020, 2021, 2022, 2023, 2024, 2025])
+    # a late start is when tagging began, not a gap: the axis is never extended backwards
+    assert r.years == [2023, 2024, 2025] and not r.truncated and not r.notes
+
+
 def test_cli_analyze(prepared, sec_bank_config_path, tmp_path, frameworks_dir, capsys):
     code = main(["analyze", "--config", str(sec_bank_config_path), "--frameworks", str(frameworks_dir), "--workspace", str(tmp_path)])
     assert code == 0 and "charts:" in capsys.readouterr().out

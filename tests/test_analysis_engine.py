@@ -59,6 +59,25 @@ def test_growth_rules(generic):
     assert r.not_computed["revenue_growth:prior_year_missing:revenue"] == 1
 
 
+def test_growth_refused_when_the_series_crosses_zero(generic):
+    """A positive base and a negative current value is the case the old guard let through.
+
+    Testing only the base catches -50 -> 20 and misses 100 -> -50, which computes to -150%: a
+    number that reads as a rate and is not one. A cash-flow series that swings either side of
+    zero produced a -2052.8% analytic that way, and the median over that row was then seeded
+    into the forecast and compounded.
+    """
+    r = run([reported("net_income", 100, fy(2024)), reported("net_income", -50, fy(2025))], generic)
+    assert r.not_computed["net_income_growth:growth_sign_change:net_income"] == 1
+    assert not any(v.fiscal_year == 2025 for v in r.values if v.analytic_id == "net_income_growth")
+
+
+def test_growth_refused_when_a_value_reaches_zero(generic):
+    """Zero is a total loss, not a -100% rate that a forecast could carry forward."""
+    r = run([reported("net_income", 100, fy(2024)), reported("net_income", 0, fy(2025))], generic)
+    assert r.not_computed["net_income_growth:growth_sign_change:net_income"] == 1
+
+
 def test_non_positive_denominator_not_computed(generic):
     r = run([reported("net_income", 10, fy(2025)), reported("total_equity", -300, fy_end(2024)),
              reported("total_equity", -100, fy_end(2025))], generic)

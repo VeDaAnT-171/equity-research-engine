@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from ..expressions import ExpressionError, evaluate, referenced_names
+from ..growth import growth_refusal
 from ..schemas.analytics import AnalyticBasis, AnalyticValue, make_value_id
 from ..schemas.financial import FinancialFact, FiscalPeriodCode, PeriodType, Provenance
 from ..schemas.framework import AnalyticSpec, IndustryFramework
@@ -151,8 +152,9 @@ class _Analyzer:
             prev = self.point(name, year - 1)
         except NotComputed:
             raise NotComputed(f"prior_year_missing:{name}") from None
-        if prev.value <= 0:
-            raise NotComputed(f"growth_base_not_positive:{name}")
+        refusal = growth_refusal(prev.value, cur.value)
+        if refusal is not None:
+            raise NotComputed(f"{refusal}:{name}")
         return cur.value / prev.value - 1, Term.combine([cur, prev], Decimal(0))
 
     def compute(self, spec: AnalyticSpec, year: int) -> tuple[Decimal, Term, str, AnalyticBasis]:

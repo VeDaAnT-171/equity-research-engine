@@ -111,6 +111,7 @@ class Chart(Model):
     derived_points: int = 0
     flagged_points: int = 0
     notes: list[str] = []
+    truncated: dict[str, int] = {}
 
 
 class ChartData(Model):
@@ -122,6 +123,10 @@ class ChartData(Model):
     currency: str | None = None
     columns: list[str]
     rows: list[dict[str, Any]]
+    notes: list[str] = []
+    #: series id -> last fiscal year with a value, for series that stop before the table does.
+    #: A blank trailing cell and a deliberately empty one look identical; this says which it is.
+    truncated: dict[str, int] = {}
 
 
 # ---- forecast -------------------------------------------------------------------------------
