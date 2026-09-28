@@ -5,11 +5,15 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import Enum
-from typing import Optional
 
 from pydantic import Field, model_validator
 
-from .common import DOCUMENT_ID_PATTERN, FISCAL_PERIOD_LABEL_PATTERN, SLUG_PATTERN, StrictModel
+from .common import (
+    DOCUMENT_ID_PATTERN,
+    FISCAL_PERIOD_LABEL_PATTERN,
+    SLUG_PATTERN,
+    StrictModel,
+)
 
 
 class AssumptionType(str, Enum):
@@ -25,21 +29,21 @@ class Assumption(StrictModel):
     assumption_id: str = Field(pattern=r"^[a-z][a-z0-9_.\-]*$")
     company_id: str = Field(pattern=SLUG_PATTERN)
     description: str = Field(min_length=1)
-    value: Optional[Decimal] = None  # None = declared but not yet set; models must refuse unset inputs
+    value: Decimal | None = None  # None = declared but not yet set; models must refuse unset inputs
     unit: str = Field(min_length=1)
-    period: Optional[str] = Field(default=None, pattern=FISCAL_PERIOD_LABEL_PATTERN)
+    period: str | None = Field(default=None, pattern=FISCAL_PERIOD_LABEL_PATTERN)
     type: AssumptionType
-    source_document_id: Optional[str] = Field(default=None, pattern=DOCUMENT_ID_PATTERN)
+    source_document_id: str | None = Field(default=None, pattern=DOCUMENT_ID_PATTERN)
     source_fact_ids: tuple[str, ...] = ()
-    scenario: Optional[str] = Field(default=None, pattern=SLUG_PATTERN)
-    rationale: Optional[str] = None
+    scenario: str | None = Field(default=None, pattern=SLUG_PATTERN)
+    rationale: str | None = None
 
     @property
     def is_set(self) -> bool:
         return self.value is not None
 
     @model_validator(mode="after")
-    def _type_rules(self) -> "Assumption":
+    def _type_rules(self) -> Assumption:
         t = self.type
         if self.value is not None and not self.value.is_finite():
             raise ValueError("assumption value must be finite")

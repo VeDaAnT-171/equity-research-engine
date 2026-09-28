@@ -12,9 +12,9 @@ from .frameworks import FrameworkRegistry
 from .ingestion import HttpFetcher, load_env_file
 from .ingestion.http import require_contact_user_agent
 from .pipeline import run_ingestion
-from .pipeline.ingest import requires_sec_access
 from .pipeline.analysis import run_analysis_stage
 from .pipeline.forecast import run_forecast_stage
+from .pipeline.ingest import requires_sec_access
 from .pipeline.quality import run_quality_stage
 from .versioning import version_stamp
 
@@ -180,13 +180,22 @@ def _cmd_forecast(args: argparse.Namespace) -> int:
 
 def _cmd_serve(args: argparse.Namespace) -> int:
     from .api import serve
+    from .api.app import is_loopback
     try:
         companies = args.companies.resolve()
         if not companies.is_dir():
             raise ResearchEngineError(f"{companies} is not a directory")
+        configured = sorted(p.parent.name for p in companies.glob("*/config.yaml"))
         print(f"serving {companies} on http://{args.host}:{args.port}")
-        print("  read-only dashboard over pipeline outputs; no authentication, do not expose it")
-        serve(companies, host=args.host, port=args.port)
+        print(f"  companies: {', '.join(configured) if configured else 'none found'}")
+        print("  read-only: the dashboard cannot run the pipeline or change any data")
+        if is_loopback(args.host):
+            print("  bound to loopback; no authentication, so keep it that way")
+        else:
+            print(f"  WARNING: bound to {args.host} with no authentication — anyone who can reach "
+                  "this port can read the whole workspace")
+        serve(companies, host=args.host, port=args.port,
+              allow_public_bind=args.allow_public_bind)
     except ResearchEngineError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -204,7 +213,11 @@ def _cmd_research(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="research-engine", description="Company-agnostic equity research engine")
-    parser.add_argument("--version", action="version", version=str(version_stamp()))
+    versions = version_stamp()
+    parser.add_argument("--version", action="version",
+                        version=f"research-engine {versions['engine_version']} "
+                                f"(schema {versions['schema_version']}, "
+                                f"parser {versions['parser_version']})")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_validate = sub.add_parser("validate", help="validate a company config and all industry frameworks")
@@ -249,6 +262,9 @@ def main(argv: list[str] | None = None) -> int:
                          help="directory containing <company>/config.yaml (default: companies)")
     p_serve.add_argument("--host", default="127.0.0.1", help="default 127.0.0.1; local tooling only")
     p_serve.add_argument("--port", type=int, default=8000)
+    p_serve.add_argument("--allow-public-bind", action="store_true",
+                         help="permit a non-loopback --host. The server has no authentication: only "
+                              "use this behind your own auth and TLS")
     p_serve.set_defaults(func=_cmd_serve)
 
     p_research = sub.add_parser("research", help="run the full pipeline (not yet implemented)")

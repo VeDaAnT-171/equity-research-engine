@@ -39,9 +39,9 @@ def facts():
     out = []
     for metric, values in HISTORY.items():
         unit = "shares" if metric == "diluted_shares" else "USD"
-        out += [reported(metric, v, fy(y), unit=unit) for y, v in zip(YEARS, values)]
+        out += [reported(metric, v, fy(y), unit=unit) for y, v in zip(YEARS, values, strict=True)]
     for metric, values in BALANCES.items():
-        out += [reported(metric, v, fy_end(y)) for y, v in zip(YEARS, values)]
+        out += [reported(metric, v, fy_end(y)) for y, v in zip(YEARS, values, strict=True)]
     return out
 
 
@@ -190,7 +190,7 @@ def test_a_declared_but_unset_assumption_stops_the_chain(framework, facts, analy
 
 
 def test_a_metric_without_a_base_year_actual_is_not_projected(framework, analytics):
-    partial = [reported("revenue", v, fy(y)) for y, v in zip(YEARS, HISTORY["revenue"])]
+    partial = [reported("revenue", v, fy(y)) for y, v in zip(YEARS, HISTORY["revenue"], strict=True)]
     result = _run(framework, partial, [], forecast_years=1)
     assert result.not_projected["total_equity:base_year_actual_missing:total_equity"] == 1
     assert _value(result, "revenue", 2026) == Decimal(1400) * (1 + Decimal(1) / 12)

@@ -7,8 +7,8 @@ AST and evaluated with Decimal arithmetic. `eval` is never used.
 from __future__ import annotations
 
 import ast
+from collections.abc import Mapping
 from decimal import Decimal
-from typing import Mapping
 
 _ALLOWED_NODES = (
     ast.Expression, ast.BinOp, ast.UnaryOp, ast.Name, ast.Load, ast.Constant,

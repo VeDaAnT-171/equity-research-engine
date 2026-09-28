@@ -15,7 +15,7 @@ from ..extraction import current_facts
 from ..lineage import LineageGraph
 from ..schemas.company import ProjectConfig
 from ..schemas.document import DocumentRecord
-from ..schemas.financial import FiscalPeriodCode, PeriodType
+from ..schemas.financial import FiscalPeriodCode
 from ..versioning import version_stamp
 
 if TYPE_CHECKING:
@@ -65,7 +65,7 @@ def _wide(facts, codes) -> str:
     return _csv_text(["metric_id", "unit"] + labels, rows)
 
 
-def write_ingestion_outputs(result: "IngestionResult", config: ProjectConfig, documents: list[DocumentRecord],
+def write_ingestion_outputs(result: IngestionResult, config: ProjectConfig, documents: list[DocumentRecord],
                             lineage: LineageGraph) -> None:
     out = result.output_dir
     facts_sorted = sorted(result.facts, key=lambda f: (f.metric_id, f.period.end, f.fact_id))
@@ -107,7 +107,7 @@ def write_ingestion_outputs(result: "IngestionResult", config: ProjectConfig, do
     _atomic_write(out / "manifest.json", json.dumps(manifest, indent=2, default=str))
 
 
-def _report_md(result: "IngestionResult", report: dict | None, annual) -> str:
+def _report_md(result: IngestionResult, report: dict | None, annual) -> str:
     lines = [f"# Extraction report: {result.company_id}", ""]
     if result.profile:
         p = result.profile

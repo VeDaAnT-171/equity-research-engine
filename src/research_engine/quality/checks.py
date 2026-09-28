@@ -7,7 +7,13 @@ import statistics
 from decimal import Decimal
 
 from ..expressions import evaluate
-from ..schemas.financial import FinancialFact, FiscalPeriodCode, Period, PeriodType, Provenance
+from ..schemas.financial import (
+    FinancialFact,
+    FiscalPeriodCode,
+    Period,
+    PeriodType,
+    Provenance,
+)
 from ..schemas.framework import OPENING_SUFFIX, IdentityCheck, IndustryFramework
 from .index import FactIndex
 from .model import QualityIssue, QualityReport, Severity
@@ -113,7 +119,7 @@ def run_continuity_checks(index: FactIndex, framework: IndustryFramework, report
             gaps.passed += 1
 
         growths: list[tuple[float, FinancialFact, FinancialFact]] = []
-        for prev, cur in zip(series, series[1:]):
+        for prev, cur in zip(series, series[1:], strict=False):  # pairwise: last item has no successor
             if cur.period.fiscal_year != prev.period.fiscal_year + 1:
                 continue
             if prev.value == 0 or cur.value == 0 or (prev.value > 0) != (cur.value > 0):

@@ -15,7 +15,7 @@ from ..quality import QualityReport, run_quality
 from ..quality.html import render_html
 from ..registry import DocumentRegistry
 from ..schemas.company import ProjectConfig
-from ..schemas.financial import FinancialFact, FiscalPeriodCode, Provenance
+from ..schemas.financial import FinancialFact, FiscalPeriodCode
 from ..versioning import version_stamp
 from .outputs import _INTERIM, _atomic_write, _csv_text, _wide, display_value
 

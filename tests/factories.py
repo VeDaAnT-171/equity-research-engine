@@ -4,7 +4,14 @@ from datetime import date
 from decimal import Decimal
 
 from research_engine.schemas import (
-    ExtractionMethod, FinancialFact, FiscalPeriodCode, Period, PeriodType, Provenance, SourceLocation, make_fact_id,
+    ExtractionMethod,
+    FinancialFact,
+    FiscalPeriodCode,
+    Period,
+    PeriodType,
+    Provenance,
+    SourceLocation,
+    make_fact_id,
 )
 
 DOC = "doc_0123456789abcdef"

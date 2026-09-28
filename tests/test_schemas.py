@@ -5,8 +5,19 @@ import pytest
 from pydantic import ValidationError
 
 from research_engine.schemas import (
-    Assumption, AssumptionType, DocumentRecord, DocumentStatus, DocumentType, ExtractionMethod, FinancialFact,
-    FiscalPeriodCode, Period, PeriodType, Provenance, SourceLocation, make_fact_id,
+    Assumption,
+    AssumptionType,
+    DocumentRecord,
+    DocumentStatus,
+    DocumentType,
+    ExtractionMethod,
+    FinancialFact,
+    FiscalPeriodCode,
+    Period,
+    PeriodType,
+    Provenance,
+    SourceLocation,
+    make_fact_id,
 )
 
 DOC = "doc_0123456789abcdef"
@@ -15,12 +26,12 @@ FY25 = Period(period_type=PeriodType.DURATION, start=date(2025, 1, 1), end=date(
 
 
 def reported(**overrides):
-    base = dict(
-        fact_id=make_fact_id("nyse-tst", "revenue", FY25, Provenance.REPORTED, f"{DOC}:us-gaap:Revenues"),
-        company_id="nyse-tst", metric_id="revenue", value=Decimal("1000"), unit="USD", currency="USD",
-        period=FY25, provenance=Provenance.REPORTED, extraction_method=ExtractionMethod.XBRL,
-        source=SourceLocation(document_id=DOC, xbrl_concept="us-gaap:Revenues"),
-    )
+    base = {
+        "fact_id": make_fact_id("nyse-tst", "revenue", FY25, Provenance.REPORTED, f"{DOC}:us-gaap:Revenues"),
+        "company_id": "nyse-tst", "metric_id": "revenue", "value": Decimal("1000"), "unit": "USD", "currency": "USD",
+        "period": FY25, "provenance": Provenance.REPORTED, "extraction_method": ExtractionMethod.XBRL,
+        "source": SourceLocation(document_id=DOC, xbrl_concept="us-gaap:Revenues"),
+    }
     base.update(overrides)
     return FinancialFact(**base)
 
@@ -88,8 +99,8 @@ class TestFinancialFact:
 
 
 class TestAssumption:
-    base = dict(assumption_id="rev_growth.fy2026", company_id="nyse-tst", description="Revenue growth",
-                value=Decimal("0.05"), unit="ratio", period="FY2026")
+    base = {"assumption_id": "rev_growth.fy2026", "company_id": "nyse-tst", "description": "Revenue growth",
+                "value": Decimal("0.05"), "unit": "ratio", "period": "FY2026"}
 
     @pytest.mark.parametrize("atype, fragment", [
         (AssumptionType.CONSENSUS, "never inferred"),

@@ -95,7 +95,7 @@ def test_chart_rendering_is_deterministic_and_marks_derived(tmp_path, frameworks
     facts = [reported("revenue", 100, fy(2023)), reported("revenue", 120, fy(2024))]
     spec = ChartSpec(id="revenue", title="Revenue", kind="bar", series=("revenue",), format="currency")
     a = render_chart(spec, framework, facts, {}, set(), tmp_path / "a", company_label="Test", engine_version="x")
-    b = render_chart(spec, framework, facts, {}, set(), tmp_path / "b", company_label="Test", engine_version="x")
+    render_chart(spec, framework, facts, {}, set(), tmp_path / "b", company_label="Test", engine_version="x")
     assert (tmp_path / "a" / "revenue.svg").read_bytes() == (tmp_path / "b" / "revenue.svg").read_bytes()
     assert a.years == [2023, 2024] and a.derived_points == 0
     single = render_chart(spec, framework, facts[:1], {}, set(), tmp_path / "c", company_label="Test", engine_version="x")

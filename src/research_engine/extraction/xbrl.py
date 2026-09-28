@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
 
 from ..calendar import FiscalCalendar
-from ..schemas.financial import ExtractionMethod, FinancialFact, Provenance, SourceLocation, make_fact_id
+from ..schemas.financial import (
+    ExtractionMethod,
+    FinancialFact,
+    Provenance,
+    SourceLocation,
+    make_fact_id,
+)
 from ..schemas.framework import IndustryFramework, MetricSpec
 from ..sources.sec import XbrlObservation
 
@@ -29,7 +35,7 @@ def unit_compatible(metric: MetricSpec, unit: str) -> bool:
     return unit != "pure" and not _CURRENCY.match(unit) and "/" not in unit  # counts: shares, customers, ...
 
 
-def canonical_unit(unit: str) -> tuple[str, Optional[str]]:
+def canonical_unit(unit: str) -> tuple[str, str | None]:
     if _CURRENCY.match(unit):
         return unit, unit
     m = _PER_SHARE.match(unit)
@@ -97,7 +103,7 @@ def extract_xbrl_facts(
     company_id: str,
     document_id: str,
     allowed_forms: frozenset[str] = DEFAULT_FORMS,
-    expected_currency: Optional[str] = None,
+    expected_currency: str | None = None,
 ) -> tuple[list[FinancialFact], ExtractionReport]:
     report = ExtractionReport(framework=framework.name, document_id=document_id)
     concept_index: dict[str, list[tuple[MetricSpec, int]]] = defaultdict(list)

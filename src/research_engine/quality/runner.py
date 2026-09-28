@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from ..extraction import current_facts
 from ..schemas.financial import FinancialFact, Provenance
@@ -17,7 +17,7 @@ def run_quality(
     framework: IndustryFramework,
     company_id: str,
     historical_years: int,
-    extraction_report: Optional[dict] = None,
+    extraction_report: dict | None = None,
 ) -> tuple[list[FinancialFact], list[FinancialFact], QualityReport]:
     """Returns (current reported facts, derived facts, report). Never modifies reported values."""
     reported = [f for f in facts if f.provenance is Provenance.REPORTED]
@@ -40,24 +40,6 @@ def run_quality(
     return current, derived, report
 
 
-def _carry_extraction_findings(extraction: dict, report: QualityReport) -> None:
-    for metric_id, cov in extraction.get("coverage", {}).items():
-        for r in cov.get("restatements", []):
-            values = ", ".join(f"{v['value']} ({v['form']} filed {v['filed']})" for v in r["values"])
-            report.add(QualityIssue("restatement", Severity.INFO, f"{metric_id} {r['period']} was restated: {values}; "
-                                    "current views use the latest filing", metric_id, r["period"]))
-        if cov.get("concept_switch"):
-            report.add(QualityIssue("concept_switch", Severity.WARNING,
-                                    f"{metric_id} is sourced from different XBRL concepts across periods "
-                                    f"({', '.join(cov['concepts_used'])}); definitions may not be comparable", metric_id,
-                                    details={"concepts": cov["concepts_used"]}))
-    for key, count in extraction.get("currency_mismatches", {}).items():
-        metric_id, currency = key.split(":", 1)
-        report.add(QualityIssue("currency", Severity.WARNING,
-                                f"{count} {metric_id} values reported in {currency}, not the configured reporting currency",
-                                metric_id))
-    for metric_id in extraction.get("metrics_without_data", []):
-        report.derivations[f"no_xbrl_data:{metric_id}"] += 1
 def _carry_extraction_findings(extraction: dict, report: QualityReport) -> None:
     for metric_id, cov in extraction.get("coverage", {}).items():
         for r in cov.get("restatements", []):

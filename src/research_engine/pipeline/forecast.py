@@ -36,7 +36,7 @@ class ForecastStageResult:
     forecast: ForecastResult
     assumptions_path: Path
     assumptions_file_present: bool
-    charts: list[ForecastChartRecord] = None
+    charts: tuple[ForecastChartRecord, ...] = ()
 
 
 def _forecast_schema():
@@ -122,13 +122,13 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
     registry = DocumentRegistry(workspace / "data" / "registry.sqlite", workspace / "data" / "raw")
     documents = registry.list_documents(company_id=config.company_id, include_superseded=True)
     lineage = LineageGraph.from_records(documents, [*reported, *derived])
-    for v in analytics:
-        lineage.add_node(LineageNode(v.value_id, NodeKind.MODEL_OUTPUT, v.analytic_id,
-                                     {"fiscal_year": str(v.fiscal_year), "value": str(v.value),
-                                      "formula": v.formula}))
-    for v in analytics:
-        for parent in (*v.input_fact_ids, *v.input_value_ids):
-            lineage.link(v.value_id, parent)
+    for analytic in analytics:
+        lineage.add_node(LineageNode(analytic.value_id, NodeKind.MODEL_OUTPUT, analytic.analytic_id,
+                                     {"fiscal_year": str(analytic.fiscal_year), "value": str(analytic.value),
+                                      "formula": analytic.formula}))
+    for analytic in analytics:
+        for parent in (*analytic.input_fact_ids, *analytic.input_value_ids):
+            lineage.link(analytic.value_id, parent)
     charts_index = out / "charts" / "index.json"
     if charts_index.is_file():
         for chart in json.loads(charts_index.read_text()):
@@ -153,15 +153,16 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
                                      {"type": a.type.value, "unit": a.unit}))
         for fid in a.source_fact_ids:
             lineage.link(node, fid)
-    for v in result.values:
-        lineage.add_node(LineageNode(v.value_id, NodeKind.MODEL_OUTPUT, f"{v.scenario}:{v.metric_id}",
-                                     {"fiscal_year": str(v.fiscal_year), "value": str(v.value),
-                                      "method": v.method, "formula": v.formula}))
-    for v in result.values:
-        for parent in (*v.input_value_ids, *v.input_fact_ids):
-            lineage.link(v.value_id, parent)
-        for aid, atype in zip(v.assumption_ids, v.assumption_types):
-            lineage.link(v.value_id, f"assumption:{aid}:{atype}")
+    for projected in result.values:
+        lineage.add_node(LineageNode(
+            projected.value_id, NodeKind.MODEL_OUTPUT, f"{projected.scenario}:{projected.metric_id}",
+            {"fiscal_year": str(projected.fiscal_year), "value": str(projected.value),
+             "method": projected.method, "formula": projected.formula}))
+    for projected in result.values:
+        for parent in (*projected.input_value_ids, *projected.input_fact_ids):
+            lineage.link(projected.value_id, parent)
+        for aid, atype in zip(projected.assumption_ids, projected.assumption_types, strict=True):
+            lineage.link(projected.value_id, f"assumption:{aid}:{atype}")
     for chart in forecast_charts:
         if chart.skipped:
             continue
@@ -231,4 +232,4 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
         "charts_rendered": sum(1 for c in forecast_charts if not c.skipped),
     }, indent=2))
     return ForecastStageResult(out, result, assumptions_path, assumptions_path.is_file(),
-                               charts=forecast_charts)
+                               charts=tuple(forecast_charts))

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal
 
 from .errors import FrameworkError
 from .frameworks import FrameworkRegistry
@@ -20,7 +20,7 @@ class FrameworkSelection:
     evidence: str
 
 
-def select_framework(config: ProjectConfig, profile: Optional[EntityProfile], registry: FrameworkRegistry) -> FrameworkSelection:
+def select_framework(config: ProjectConfig, profile: EntityProfile | None, registry: FrameworkRegistry) -> FrameworkSelection:
     override = config.company.industry_framework
     if override:
         registry.get(override)

@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ..schemas.framework import IndustryFramework
 
 CATEGORY_ORDER = ("growth", "profitability", "returns", "efficiency", "capital_intensity", "leverage", "liquidity",
                   "credit", "capital", "per_share", "operating")
 
 
-def fmt(value: Optional[float], unit_kind: str, currency: Optional[str] = None) -> str:
+def fmt(value: float | None, unit_kind: str, currency: str | None = None) -> str:
     if value is None:
         return "–"
     if unit_kind == "ratio":
@@ -27,7 +25,7 @@ def fmt(value: Optional[float], unit_kind: str, currency: Optional[str] = None) 
 
 
 def render_markdown(*, company_id: str, framework: IndustryFramework, fiscal_years: list[int], summaries: dict,
-                    not_computed: dict, charts: list[dict], currencies: dict[str, Optional[str]], versions: dict) -> str:
+                    not_computed: dict, charts: list[dict], currencies: dict[str, str | None], versions: dict) -> str:
     lines = [
         f"# Historical analysis: {company_id}", "",
         f"Framework **{framework.name}** · fiscal years {fiscal_years[0] if fiscal_years else '–'}–"

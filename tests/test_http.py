@@ -7,7 +7,12 @@ import pytest
 
 from research_engine.errors import ConfigError, FetchError
 from research_engine.ingestion import HttpFetcher, load_env_file
-from research_engine.ingestion.http import check_resolves_public, gunzip_limited, read_limited, require_contact_user_agent
+from research_engine.ingestion.http import (
+    check_resolves_public,
+    gunzip_limited,
+    read_limited,
+    require_contact_user_agent,
+)
 
 
 def resolver_for(*addresses):

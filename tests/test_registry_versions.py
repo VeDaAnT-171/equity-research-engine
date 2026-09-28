@@ -1,4 +1,5 @@
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -24,7 +25,7 @@ def test_changed_content_becomes_new_version(registry):
     assert [d.document_id for d in registry.list_documents()] == [v2.document_id]
     assert len(registry.list_documents(include_superseded=True)) == 2
     # both raw versions still exist
-    assert open(registry.get(v1.document_id).raw_path, "rb").read() == b"v1"
+    assert Path(registry.get(v1.document_id).raw_path).read_bytes() == b"v1"
 
 
 def test_content_flip_flop_keeps_a_linear_chain(registry):

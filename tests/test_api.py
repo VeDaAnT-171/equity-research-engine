@@ -262,3 +262,52 @@ def test_openapi_documents_real_response_shapes(client):
     ref = analytics["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
     assert ref.endswith("/Analytics")
     assert "value_id" in json.dumps(spec["components"]["schemas"]["AnalyticPoint"])
+
+
+def test_chart_table_places_each_value_under_its_own_year(client):
+    """A series shorter than the chart's span must not slide its values left.
+
+    Regression test. The table was built by zipping the chart's year axis against a series'
+    lineage ids positionally, so a series with fewer points than the chart spans had every value
+    reported under the wrong year. The picture was right and the table was wrong, which means the
+    error reached only the readers who use the table instead of the picture.
+    """
+    charts = client.get("/api/companies/nyse-exbk/charts").json()
+    uneven = [c for c in charts
+              if len({len(ids) for ids in c["series"].values()} | {len(c["years"])}) > 1]
+    assert uneven, "fixture no longer exercises a chart with series of differing length"
+
+    for chart in uneven:
+        table = client.get(f"/api/companies/nyse-exbk/charts/{chart['chart_id']}/data").json()
+        lineage_years = {}
+        for row in table["rows"]:
+            series_id = row["series"]
+            filled = sorted(int(k[2:]) for k, v in row.items() if k.startswith("FY") and v is not None)
+            lineage_years[series_id] = filled
+            # a series with n plotted points fills exactly n year cells
+            assert len(filled) == len(chart["series"][series_id]), (series_id, filled)
+        # and the chart's own year list is the union of what the rows fill
+        assert sorted({y for ys in lineage_years.values() for y in ys}) == sorted(chart["years"])
+
+
+# ---- the server refuses to publish itself by accident -----------------------------------------
+
+def test_a_public_bind_is_refused_without_an_explicit_flag(tmp_path):
+    from research_engine.api.app import is_loopback, serve
+    from research_engine.errors import ResearchEngineError
+
+    assert is_loopback("127.0.0.1") and is_loopback("::1") and is_loopback("localhost")
+    assert not is_loopback("0.0.0.0") and not is_loopback("192.168.1.10")
+
+    for host in ("0.0.0.0", "192.168.1.10"):
+        with pytest.raises(ResearchEngineError, match="refusing to bind"):
+            serve(tmp_path, host=host)
+
+
+def test_the_cli_exits_non_zero_rather_than_serving_publicly(tmp_path, capsys):
+    from research_engine.cli import main
+    code = main(["serve", "--companies", str(tmp_path), "--host", "0.0.0.0"])
+    assert code == 1
+    captured = capsys.readouterr()
+    assert "refusing to bind" in captured.err
+    assert "no authentication" in captured.out

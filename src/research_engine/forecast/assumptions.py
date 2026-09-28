@@ -20,10 +20,10 @@ Every projected value records which assumption id and which rung it used.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import Iterable, Mapping, Optional
 
 import yaml
 from pydantic import ValidationError
@@ -111,7 +111,7 @@ def annual_analytic_series(values: Iterable[AnalyticValue]) -> dict[str, SeedInp
     values = list(values)
     by_value_id = {v.value_id: v for v in values}
 
-    def facts_for(value: AnalyticValue, seen: Optional[set[str]] = None) -> tuple[str, ...]:
+    def facts_for(value: AnalyticValue, seen: set[str] | None = None) -> tuple[str, ...]:
         seen = seen if seen is not None else set()
         if value.value_id in seen:
             return ()
@@ -131,7 +131,7 @@ def annual_analytic_series(values: Iterable[AnalyticValue]) -> dict[str, SeedInp
     return out
 
 
-def seed_growth(company_id: str, metric_id: str, seed: SeedInput) -> Optional[Assumption]:
+def seed_growth(company_id: str, metric_id: str, seed: SeedInput) -> Assumption | None:
     """Median year-on-year growth over the trailing window. None when history cannot support it."""
     years = sorted(seed.values)
     pairs: list[tuple[int, Decimal]] = []
@@ -160,7 +160,7 @@ def seed_growth(company_id: str, metric_id: str, seed: SeedInput) -> Optional[As
 
 
 def seed_level(company_id: str, name: str, seed: SeedInput, *, key: str, unit: str,
-               label: str) -> Optional[Assumption]:
+               label: str) -> Assumption | None:
     """Median level over the trailing window, for rates and ratios that are states, not growth."""
     years = _trailing(seed.values, sorted(seed.values))
     if not years:
@@ -222,7 +222,7 @@ class AssumptionSet:
             raise AssumptionUnavailable(f"assumption_unset:{key}")
         return best
 
-    def merge(self, others: Iterable[Assumption]) -> "AssumptionSet":
+    def merge(self, others: Iterable[Assumption]) -> AssumptionSet:
         return AssumptionSet([*self.all, *others], self.scenarios.values())
 
 
@@ -280,7 +280,7 @@ def load_assumptions_file(path: Path, *, company_id: str) -> tuple[list[Assumpti
             )
         assumptions.append(a)
 
-    seen: set[tuple[str, Optional[str], Optional[str], AssumptionType]] = set()
+    seen: set[tuple[str, str | None, str | None, AssumptionType]] = set()
     for a in assumptions:
         key = (a.assumption_id, a.period, a.scenario, a.type)
         if key in seen:

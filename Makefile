@@ -2,7 +2,7 @@ PY ?= python3
 CONFIG ?= companies/nyse-jpm/config.yaml
 FRAMEWORKS ?= industry_frameworks
 
-.PHONY: install install-api test validate frameworks ingest quality analyze forecast data research serve
+.PHONY: install install-api test lint types check validate frameworks ingest quality analyze forecast data research serve
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -12,6 +12,15 @@ install-api:
 
 test:
 	PYTHONPATH=src $(PY) -m pytest -q
+
+lint:
+	$(PY) -m ruff check src tests
+
+types:
+	$(PY) -m mypy
+
+# What CI runs. If this passes locally it should pass there.
+check: test lint types
 
 validate:
 	PYTHONPATH=src $(PY) -m research_engine validate --config $(CONFIG) --frameworks $(FRAMEWORKS)

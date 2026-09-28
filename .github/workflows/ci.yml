@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: python -m pip install --upgrade pip && pip install -e ".[dev,api]"
+
+      - name: Tests
+        run: pytest -q --cov=research_engine --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage
+        if: matrix.python == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+
+  quality:
+    name: lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: python -m pip install --upgrade pip && pip install -e ".[dev,api]"
+
+      - name: Ruff
+        run: ruff check src tests
+
+      - name: Ruff format check
+        run: ruff format --check --diff src tests || true   # advisory: the codebase is not ruff-formatted
+
+      - name: Mypy
+        run: mypy src/research_engine
+
+  invariants:
+    name: architectural invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: python -m pip install --upgrade pip && pip install -e ".[dev,api]"
+
+      # The guarantee the whole project rests on: a company is an input, never code.
+      - name: Company-agnostic guard
+        run: pytest -q tests/test_company_agnostic.py
+
+      # Every shipped framework must resolve with no dangling references or circular derivations.
+      - name: Frameworks resolve
+        run: python -m research_engine frameworks --frameworks industry_frameworks
+
+      # A demonstration config must validate with no code changes.
+      - name: Example company validates
+        run: python -m research_engine validate --config companies/nyse-jpm/config.yaml --frameworks industry_frameworks
+
+  package:
+    name: build and install from wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        run: python -m pip install --upgrade pip build && python -m build
+
+      # Installing from the wheel in a clean environment catches packaging mistakes that an
+      # editable install hides, such as data files missing from the distribution.
+      - name: Install the wheel and run it
+        run: |
+          python -m venv /tmp/fresh
+          /tmp/fresh/bin/pip install dist/*.whl
+          /tmp/fresh/bin/research-engine --version
+          /tmp/fresh/bin/research-engine frameworks --frameworks industry_frameworks
+
+      - name: Dashboard static files are packaged
+        run: |
+          /tmp/fresh/bin/python -c "
+          from pathlib import Path
+          import research_engine.api as api
+          static = Path(api.__file__).parent / 'static'
+          missing = [f for f in ('index.html', 'app.js', 'styles.css') if not (static / f).is_file()]
+          assert not missing, f'missing from the wheel: {missing}'
+          print('dashboard assets present in the installed package')
+          "

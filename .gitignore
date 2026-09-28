@@ -9,3 +9,11 @@ output/
 companies/*/data/
 companies/*/output/
 .incoming-*
+
+# build artefacts
+dist/
+build/
+.coverage
+coverage.xml
+.ruff_cache/
+.mypy_cache/

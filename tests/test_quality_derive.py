@@ -6,7 +6,7 @@ from research_engine.frameworks import FrameworkRegistry
 from research_engine.quality import run_quality
 from research_engine.schemas import Provenance
 
-from .factories import duration, fy, fy_end, instant, reported
+from .factories import duration, fy, reported
 
 
 @pytest.fixture(scope="module")

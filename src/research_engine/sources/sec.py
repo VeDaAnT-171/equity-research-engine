@@ -7,7 +7,6 @@ import re
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Optional
 
 from ..calendar import effective_month
 from ..errors import ExtractionError
@@ -42,9 +41,9 @@ class EntityProfile:
     name: str
     tickers: tuple[str, ...]
     exchanges: tuple[str, ...]
-    sic: Optional[int]
-    sic_description: Optional[str]
-    fiscal_year_end_month: Optional[int]
+    sic: int | None
+    sic_description: str | None
+    fiscal_year_end_month: int | None
     source_document_id: str
 
 
@@ -54,12 +53,12 @@ class XbrlObservation:
     concept: str
     unit: str
     value: Decimal
-    start: Optional[date]
+    start: date | None
     end: date
     accession: str
     form: str
     filed: date
-    frame: Optional[str]
+    frame: str | None
 
     @property
     def qname(self) -> str:
@@ -81,7 +80,7 @@ class SecSubmissions(StructuredSource):
     def can_handle(self, url: str) -> bool:
         return bool(_SUBMISSIONS.match(url))
 
-    def identifier_from_url(self, url: str) -> Optional[str]:
+    def identifier_from_url(self, url: str) -> str | None:
         m = _SUBMISSIONS.match(url)
         return m.group(1) if m else None
 
@@ -125,7 +124,7 @@ class SecCompanyFacts(StructuredSource):
     def can_handle(self, url: str) -> bool:
         return bool(_COMPANYFACTS.match(url))
 
-    def identifier_from_url(self, url: str) -> Optional[str]:
+    def identifier_from_url(self, url: str) -> str | None:
         m = _COMPANYFACTS.match(url)
         return m.group(1) if m else None
 
@@ -158,7 +157,7 @@ class SecCompanyFacts(StructuredSource):
         )
 
     @staticmethod
-    def _observation(taxonomy: str, concept: str, unit: str, row) -> Optional[XbrlObservation]:
+    def _observation(taxonomy: str, concept: str, unit: str, row) -> XbrlObservation | None:
         if not isinstance(row, dict):
             return None
         try:

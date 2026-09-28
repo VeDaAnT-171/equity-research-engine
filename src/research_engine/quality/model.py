@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class Severity(str, Enum):
@@ -17,8 +16,8 @@ class QualityIssue:
     check: str
     severity: Severity
     message: str
-    metric_id: Optional[str] = None
-    period: Optional[str] = None
+    metric_id: str | None = None
+    period: str | None = None
     fact_ids: tuple[str, ...] = ()
     details: dict = field(default_factory=dict)
 

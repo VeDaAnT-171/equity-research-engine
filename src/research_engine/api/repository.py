@@ -10,10 +10,11 @@ quality stage never ran would be worse than one showing nothing at all.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any
 
 from ..config import load_project_config
 from ..errors import ConfigError, ResearchEngineError
@@ -335,28 +336,39 @@ def chart_data(ws: CompanyWorkspace, chart_id: str) -> dict[str, Any]:
     """A chart's numbers as a table.
 
     The chart guidance this dashboard follows requires every chart to have a non-visual
-    equivalent, and a picture of a line is useless to a screen reader. The chart record already
-    stores the lineage id behind each plotted point, so the table is a join rather than a second
-    computation: the same values, from the same rows, in the same order.
+    equivalent, and a picture of a line is useless to a screen reader. The chart record stores the
+    lineage id behind each plotted point, so the table is a join rather than a second computation.
+
+    Each value is placed under *its own* fiscal year, read from the row it came from. Pairing the
+    chart's year axis with a series' id list positionally is wrong whenever a series has fewer
+    points than the chart spans, which is common: the shorter series then slides left and every
+    value lands under the wrong year. That misalignment is invisible in the picture, so it would
+    be served only to the readers who depend on the table instead of the picture.
     """
     record = next((c for c in ws.chart_index() if c["chart_id"] == chart_id), None)
     if record is None:
         raise UnknownChart(chart_id)
-    values: dict[str, tuple[float, Optional[str]]] = {}
-    for row in ws.parquet("historical_financials.parquet", "analyze"):
-        values[row["fact_id"]] = (row["value"], row["currency"])
+    values: dict[str, tuple[float, str | None]] = {}
+    year_of: dict[str, int] = {}
+    for fact in ws.parquet("historical_financials.parquet", "analyze"):
+        values[fact["fact_id"]] = (fact["value"], fact["currency"])
+        year_of[fact["fact_id"]] = fact["fiscal_year"]
     unit_kinds: dict[str, str] = {}
-    for row in ws.parquet("historical_analytics.parquet", "analyze"):
-        values[row["value_id"]] = (row["value"], row["currency"])
-        unit_kinds[row["analytic_id"]] = row["unit_kind"]
+    for analytic in ws.parquet("historical_analytics.parquet", "analyze"):
+        values[analytic["value_id"]] = (analytic["value"], analytic["currency"])
+        year_of[analytic["value_id"]] = analytic["fiscal_year"]
+        unit_kinds[analytic["analytic_id"]] = analytic["unit_kind"]
 
     years = record.get("years") or []
     rows = []
     for series_id, lineage_ids in (record.get("series") or {}).items():
         row: dict[str, Any] = {"series": series_id}
-        for year, lineage_id in zip(years, lineage_ids):
+        row.update({f"FY{y}": None for y in years})
+        for lineage_id in lineage_ids:
+            year = year_of.get(lineage_id)
             found = values.get(lineage_id)
-            row[f"FY{year}"] = found[0] if found else None
+            if year is not None and found is not None and year in years:
+                row[f"FY{year}"] = found[0]
         rows.append(row)
     currency = next((c for v, c in values.values() if c), None)
     # Analytics declare a unit kind; plain metric series do not, so infer from the currency.
@@ -449,7 +461,7 @@ def trace(ws: CompanyWorkspace, node_id: str, max_nodes: int = 400) -> dict[str,
     }
 
 
-def _depth(node_id: str, parents: dict[str, list[str]], seen: Optional[set] = None) -> int:
+def _depth(node_id: str, parents: dict[str, list[str]], seen: set | None = None) -> int:
     seen = seen if seen is not None else set()
     if node_id in seen:
         return 0

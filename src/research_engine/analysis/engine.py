@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Iterable, Optional
 
 from ..expressions import ExpressionError, evaluate, referenced_names
-from ..schemas.analytics import AnalyticValue, make_value_id
+from ..schemas.analytics import AnalyticBasis, AnalyticValue, make_value_id
 from ..schemas.financial import FinancialFact, FiscalPeriodCode, PeriodType, Provenance
 from ..schemas.framework import AnalyticSpec, IndustryFramework
 
@@ -22,7 +22,7 @@ class NotComputed(Exception):
 class QualityGate:
     """Error-severity issues block their facts; warning-severity issues travel with every value built on them."""
 
-    def __init__(self, quality_report: Optional[dict]):
+    def __init__(self, quality_report: dict | None):
         self.blocked: dict[str, str] = {}
         self.blocked_periods: dict[tuple[str, str], str] = {}
         self.flags: dict[str, set[str]] = defaultdict(set)
@@ -53,7 +53,7 @@ class Term:
     currencies: set[str] = field(default_factory=set)
 
     @staticmethod
-    def combine(terms: Iterable["Term"], value: Decimal) -> "Term":
+    def combine(terms: Iterable[Term], value: Decimal) -> Term:
         out = Term(value)
         for t in terms:
             out.fact_ids += [f for f in t.fact_ids if f not in out.fact_ids]
@@ -75,7 +75,8 @@ class AnalysisResult:
 def _order(framework: IndustryFramework) -> list[AnalyticSpec]:
     ids = framework.analytic_ids
     deps = {a.id: set(a.references) & ids for a in framework.analytics}
-    ordered, done = [], set()
+    ordered: list = []
+    done: set[str] = set()
     while len(ordered) < len(deps):
         for a in framework.analytics:  # acyclic is guaranteed by framework validation
             if a.id not in done and deps[a.id] <= done:
@@ -154,7 +155,7 @@ class _Analyzer:
             raise NotComputed(f"growth_base_not_positive:{name}")
         return cur.value / prev.value - 1, Term.combine([cur, prev], Decimal(0))
 
-    def compute(self, spec: AnalyticSpec, year: int) -> tuple[Decimal, Term, str, str]:
+    def compute(self, spec: AnalyticSpec, year: int) -> tuple[Decimal, Term, str, AnalyticBasis]:
         if spec.kind == "level":
             t = self.point(spec.metric, year)
             return t.value, t, spec.metric, "period_end"
@@ -223,7 +224,7 @@ class _Analyzer:
 
 
 def run_analytics(framework: IndustryFramework, facts: Iterable[FinancialFact], *, company_id: str,
-                  quality_report: Optional[dict]) -> AnalysisResult:
+                  quality_report: dict | None) -> AnalysisResult:
     facts = list(facts)
     analyzer = _Analyzer(framework, facts, company_id, QualityGate(quality_report))
     analyzer.run()

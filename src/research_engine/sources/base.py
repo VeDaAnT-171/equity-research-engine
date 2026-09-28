@@ -4,7 +4,8 @@ an adapter class here; the pipeline discovers adapters by URL, never by company.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 
 class StructuredSource(ABC):
@@ -16,7 +17,7 @@ class StructuredSource(ABC):
     def can_handle(self, url: str) -> bool: ...
 
     @abstractmethod
-    def identifier_from_url(self, url: str) -> Optional[str]:
+    def identifier_from_url(self, url: str) -> str | None:
         """Entity identifier embedded in the URL (e.g. CIK), used to catch config mistakes before fetching."""
 
     @abstractmethod
@@ -27,6 +28,6 @@ class StructuredSource(ABC):
         return {"name": self.name, "description": self.description}
 
 
-def find_source(url: str, sources: Sequence[StructuredSource]) -> Optional[StructuredSource]:
+def find_source(url: str, sources: Sequence[StructuredSource]) -> StructuredSource | None:
     matches = [s for s in sources if s.can_handle(url)]
     return matches[0] if matches else None

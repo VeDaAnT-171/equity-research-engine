@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from enum import Enum
-from typing import Iterable, Literal, Optional
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
@@ -58,13 +59,13 @@ class MetricSpec(StrictModel):
     # Ordered candidate concepts. Coverage is verified at extraction time, never assumed.
     xbrl_concepts: tuple[str, ...] = ()
     # Used when no reported value exists. Reported always wins; derived never overwrites it.
-    derivation: Optional[str] = None
+    derivation: str | None = None
     # For KPIs with no standard tag (company-defined operating metrics).
-    extraction_hint: Optional[str] = None
+    extraction_hint: str | None = None
     # Data-quality metadata. Levels like assets or revenue cannot be negative; flows like cash change can.
     expected_sign: Literal["non_negative", "any"] = "any"
     # Whether sub-period values sum to the full period (enables Q4 = FY - 9M). Default: currency flows.
-    additive: Optional[bool] = None
+    additive: bool | None = None
 
     @property
     def is_additive(self) -> bool:
@@ -82,7 +83,7 @@ class MetricSpec(StrictModel):
 
     @field_validator("derivation")
     @classmethod
-    def _derivation(cls, v: Optional[str]) -> Optional[str]:
+    def _derivation(cls, v: str | None) -> str | None:
         if v is not None:
             referenced_names(v)
         return v
@@ -94,11 +95,11 @@ class DriverSpec(StrictModel):
     description: str = ""
     affects: tuple[str, ...] = Field(min_length=1)
     # None = trend/assumption-driven. Otherwise expressed over metric ids only.
-    formula: Optional[str] = None
+    formula: str | None = None
 
     @field_validator("formula")
     @classmethod
-    def _formula(cls, v: Optional[str]) -> Optional[str]:
+    def _formula(cls, v: str | None) -> str | None:
         if v is not None:
             referenced_names(v)
         return v
@@ -117,7 +118,7 @@ class IdentityCheck(StrictModel):
     explanation_if_failed: str = ""
 
     @model_validator(mode="after")
-    def _additive(self) -> "IdentityCheck":
+    def _additive(self) -> IdentityCheck:
         for side in (self.left, self.right):
             if not is_additive(side):
                 raise ValueError(f"identity check {self.id!r}: only + and - are allowed ({side!r}); "
@@ -157,16 +158,16 @@ class AnalyticSpec(StrictModel):
     category: AnalyticCategory
     kind: Literal["level", "growth", "ratio", "expression", "elasticity"]
     unit_kind: Literal["ratio", "currency", "currency_per_share", "multiple", "count"]
-    metric: Optional[str] = None
-    numerator: Optional[str] = None
-    denominator: Optional[str] = None
+    metric: str | None = None
+    numerator: str | None = None
+    denominator: str | None = None
     denominator_basis: Literal["period_end", "average", "opening"] = "period_end"
-    formula: Optional[str] = None
-    of: Optional[str] = None
-    relative_to: Optional[str] = None
+    formula: str | None = None
+    of: str | None = None
+    relative_to: str | None = None
 
     @model_validator(mode="after")
-    def _shape(self) -> "AnalyticSpec":
+    def _shape(self) -> AnalyticSpec:
         required = {
             "level": ("metric",), "growth": ("metric",), "ratio": ("numerator", "denominator"),
             "expression": ("formula",), "elasticity": ("of", "relative_to"),
@@ -211,7 +212,7 @@ class ValuationPolicy(StrictModel):
     excluded: dict[ValuationMethod, str] = Field(default_factory=dict)  # method -> reason
 
     @model_validator(mode="after")
-    def _consistent(self) -> "ValuationPolicy":
+    def _consistent(self) -> ValuationPolicy:
         overlap = set(self.preferred) & set(self.excluded)
         if overlap:
             raise ValueError(f"methods both preferred and excluded: {sorted(m.value for m in overlap)}")
@@ -245,7 +246,7 @@ class IndustryFramework(StrictModel):
     name: str = Field(pattern=SLUG_PATTERN)
     display_name: str = Field(min_length=1)
     description: str = ""
-    extends: Optional[str] = Field(default=None, pattern=SLUG_PATTERN)
+    extends: str | None = Field(default=None, pattern=SLUG_PATTERN)
     classification: ClassificationRule = Field(default_factory=ClassificationRule)
     metrics: tuple[MetricSpec, ...] = ()
     remove_metrics: tuple[str, ...] = ()  # drop inherited metrics that don't apply (e.g. COGS for banks)
@@ -351,22 +352,23 @@ class IndustryFramework(StrictModel):
         if len(set(chart_ids)) != len(chart_ids):
             raise ValueError("duplicate chart ids")
         for c in self.charts:
-            unknown = set(c.series) - series_ids
-            if unknown:
-                raise ValueError(f"chart {c.id!r} references unknown series {sorted(unknown)}")
-        unknown = set(self.forecast_targets) - known
-        if unknown:
-            raise ValueError(f"forecast_targets reference unknown metrics {sorted(unknown)}")
+            unknown_series = set(c.series) - series_ids
+            if unknown_series:
+                raise ValueError(f"chart {c.id!r} references unknown series {sorted(unknown_series)}")
+        unknown_targets = set(self.forecast_targets) - known
+        if unknown_targets:
+            raise ValueError(f"forecast_targets reference unknown metrics {sorted(unknown_targets)}")
         if len(set(self.forecast_targets)) != len(self.forecast_targets):
             raise ValueError("duplicate forecast_targets")
         for d in self.drivers:
-            unknown = set(d.affects) - known
-            if unknown:
-                raise ValueError(f"driver {d.id!r} affects unknown metrics {sorted(unknown)}")
+            unknown_affects = set(d.affects) - known
+            if unknown_affects:
+                raise ValueError(f"driver {d.id!r} affects unknown metrics {sorted(unknown_affects)}")
             if d.formula:
-                unknown = referenced_names(d.formula) - series_ids
-                if unknown:
-                    raise ValueError(f"driver {d.id!r} formula references unknown metrics or analytics {sorted(unknown)}")
+                unknown_inputs = referenced_names(d.formula) - series_ids
+                if unknown_inputs:
+                    raise ValueError(f"driver {d.id!r} formula references unknown metrics or analytics "
+                                     f"{sorted(unknown_inputs)}")
         for check in self.checks:
             for name in check.names:
                 base = IdentityCheck.base_metric(name)

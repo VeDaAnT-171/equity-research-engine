@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Literal, Optional
+from typing import Literal
 
 from .schemas.financial import FiscalPeriodCode, Period, PeriodType
 
@@ -31,8 +31,8 @@ def effective_month(d: date) -> tuple[int, int]:
 
 @dataclass(frozen=True)
 class Classification:
-    period: Optional[Period]
-    skip_reason: Optional[str] = None
+    period: Period | None
+    skip_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ class FiscalCalendar:
         if not 1 <= self.fiscal_year_end_month <= 12:
             raise ValueError("fiscal_year_end_month must be 1-12")
 
-    def quarter_index(self, month: int) -> Optional[int]:
+    def quarter_index(self, month: int) -> int | None:
         offset = (month - self.fiscal_year_end_month) % 12
         if offset % 3:
             return None
@@ -56,7 +56,7 @@ class FiscalCalendar:
             return end_year
         return end_year - 1
 
-    def classify(self, start: Optional[date], end: date) -> Classification:
+    def classify(self, start: date | None, end: date) -> Classification:
         year, month = effective_month(end)
         quarter = self.quarter_index(month)
         if quarter is None:

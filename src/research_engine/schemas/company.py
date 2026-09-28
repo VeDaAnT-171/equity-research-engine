@@ -4,14 +4,21 @@ from __future__ import annotations
 
 import ipaddress
 import re
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
-from typing import Iterator, Literal, Optional
+from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import Field, field_validator, model_validator
 
-from .common import CURRENCY_PATTERN, FISCAL_PERIOD_LABEL_PATTERN, SLUG_PATTERN, StrictModel, slugify
+from .common import (
+    CURRENCY_PATTERN,
+    FISCAL_PERIOD_LABEL_PATTERN,
+    SLUG_PATTERN,
+    StrictModel,
+    slugify,
+)
 from .document import DocumentType
 from .framework import ValuationFamily
 
@@ -38,11 +45,11 @@ def validate_public_https_url(v: str) -> str:
 
 
 class SourceRef(StrictModel):
-    url: Optional[str] = None
-    path: Optional[Path] = None
-    label: Optional[str] = None
-    fiscal_period: Optional[str] = Field(default=None, pattern=FISCAL_PERIOD_LABEL_PATTERN)
-    publication_date: Optional[date] = None
+    url: str | None = None
+    path: Path | None = None
+    label: str | None = None
+    fiscal_period: str | None = Field(default=None, pattern=FISCAL_PERIOD_LABEL_PATTERN)
+    publication_date: date | None = None
 
     @field_validator("url", mode="before")
     @classmethod
@@ -51,11 +58,11 @@ class SourceRef(StrictModel):
 
     @field_validator("url")
     @classmethod
-    def _safe_url(cls, v: Optional[str]) -> Optional[str]:
+    def _safe_url(cls, v: str | None) -> str | None:
         return None if v is None else validate_public_https_url(v)
 
     @model_validator(mode="after")
-    def _one_location(self) -> "SourceRef":
+    def _one_location(self) -> SourceRef:
         if (self.url is None) == (self.path is None):
             raise ValueError("a source needs exactly one of 'url' or 'path'")
         return self
@@ -88,9 +95,9 @@ def _is_blank_ref(v) -> bool:
 
 
 class SourcesConfig(StrictModel):
-    investor_relations: Optional[SourceRef] = None
-    optional_consensus: Optional[SourceRef] = None
-    optional_market_data: Optional[SourceRef] = None
+    investor_relations: SourceRef | None = None
+    optional_consensus: SourceRef | None = None
+    optional_market_data: SourceRef | None = None
     structured_filings: tuple[SourceRef, ...] = ()
     annual_reports: tuple[SourceRef, ...] = ()
     quarterly_reports: tuple[SourceRef, ...] = ()
@@ -119,7 +126,7 @@ class SourcesConfig(StrictModel):
         return cleaned
 
     @model_validator(mode="after")
-    def _unique(self) -> "SourcesConfig":
+    def _unique(self) -> SourcesConfig:
         seen: set[str] = set()
         for _, ref in self.iter_documents():
             if ref.location in seen:
@@ -138,9 +145,9 @@ class SourcesConfig(StrictModel):
 
 
 class CompanyIdentifiers(StrictModel):
-    cik: Optional[str] = None
-    lei: Optional[str] = Field(default=None, pattern=r"^[A-Z0-9]{18}[0-9]{2}$")
-    isin: Optional[str] = Field(default=None, pattern=r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+    cik: str | None = None
+    lei: str | None = Field(default=None, pattern=r"^[A-Z0-9]{18}[0-9]{2}$")
+    isin: str | None = Field(default=None, pattern=r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 
     @field_validator("cik", mode="before")
     @classmethod
@@ -158,14 +165,14 @@ class CompanyProfile(StrictModel):
     ticker: str
     exchange: str = Field(min_length=1)
     country: str = Field(min_length=1)
-    sector: Optional[str] = None  # hint only; classification is evidence-based
-    industry_framework: Optional[str] = Field(default=None, pattern=SLUG_PATTERN)  # explicit override
+    sector: str | None = None  # hint only; classification is evidence-based
+    industry_framework: str | None = Field(default=None, pattern=SLUG_PATTERN)  # explicit override
     identifiers: CompanyIdentifiers = Field(default_factory=CompanyIdentifiers)
-    reporting_currency: Optional[str] = Field(default=None, pattern=CURRENCY_PATTERN)
-    fiscal_year_end_month: Optional[int] = Field(default=None, ge=1, le=12)
+    reporting_currency: str | None = Field(default=None, pattern=CURRENCY_PATTERN)
+    fiscal_year_end_month: int | None = Field(default=None, ge=1, le=12)
     # How fiscal years are labelled: by the calendar year they end in (most issuers) or begin in.
     fiscal_year_convention: Literal["end_year", "start_year"] = "end_year"
-    company_id: Optional[str] = Field(default=None, pattern=SLUG_PATTERN)
+    company_id: str | None = Field(default=None, pattern=SLUG_PATTERN)
 
     @field_validator("ticker", mode="before")
     @classmethod
@@ -209,7 +216,7 @@ class ProjectConfig(StrictModel):
         return str(v)
 
     @model_validator(mode="after")
-    def _has_primary_sources(self) -> "ProjectConfig":
+    def _has_primary_sources(self) -> ProjectConfig:
         if not any(t not in NON_PRIMARY_TYPES for t, _ in self.sources.iter_documents()):
             raise ValueError(
                 "no primary source documents configured: add at least one of structured_filings, "

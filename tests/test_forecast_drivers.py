@@ -3,7 +3,12 @@ import pytest
 from research_engine.errors import ForecastError
 from research_engine.forecast import build_driver_graph
 from research_engine.frameworks import FrameworkRegistry
-from research_engine.schemas.framework import DriverSpec, IndustryFramework, MetricSpec, ValuationPolicy
+from research_engine.schemas.framework import (
+    DriverSpec,
+    IndustryFramework,
+    MetricSpec,
+    ValuationPolicy,
+)
 
 
 @pytest.fixture

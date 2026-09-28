@@ -4,7 +4,11 @@ from decimal import Decimal
 
 import pytest
 
-from research_engine.forecast.charts import DASHES, render_forecast_chart, render_forecast_charts
+from research_engine.forecast.charts import (
+    DASHES,
+    render_forecast_chart,
+    render_forecast_charts,
+)
 from research_engine.frameworks import FrameworkRegistry
 from research_engine.schemas.forecast import ForecastValue, make_forecast_id
 
@@ -90,7 +94,7 @@ def test_charts_follow_driver_graph_order(framework, tmp_path):
 
     from .factories import fy, fy_end, reported
     facts = []
-    for year, revenue in zip(range(2021, 2026), (1000, 1100, 1200, 1300, 1400)):
+    for year, revenue in zip(range(2021, 2026), (1000, 1100, 1200, 1300, 1400), strict=True):
         facts.append(reported("revenue", revenue, fy(year)))
         facts.append(reported("total_equity", revenue, fy_end(year)))
     analytics = run_analytics(framework, facts, company_id=COMPANY, quality_report=None).values

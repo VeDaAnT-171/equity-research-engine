@@ -9,8 +9,9 @@ import time
 import urllib.error
 import urllib.request
 import zlib
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional, Protocol
+from typing import Protocol
 from urllib.parse import urlparse
 
 from ..errors import ConfigError, FetchError
@@ -23,7 +24,7 @@ DEFAULT_MAX_BYTES = 200 * 1024 * 1024  # companyfacts for large filers is tens o
 @dataclass(frozen=True)
 class FetchResult:
     content: bytes
-    content_type: Optional[str]
+    content_type: str | None
     final_url: str
 
 
@@ -76,7 +77,7 @@ def gunzip_limited(body: bytes, max_bytes: int) -> bytes:
     return out
 
 
-def require_contact_user_agent(user_agent: Optional[str]) -> str:
+def require_contact_user_agent(user_agent: str | None) -> str:
     ua = (user_agent or "").strip()
     if not ua or "@" not in ua:
         raise ConfigError(
@@ -146,7 +147,7 @@ class HttpFetcher:
             raise FetchError(f"HTTP {exc.code} for {url}{hint}") from None
         except urllib.error.URLError as exc:
             raise FetchError(f"cannot retrieve {url}: {exc.reason}") from None
-        except (TimeoutError, socket.timeout):
+        except TimeoutError:
             raise FetchError(f"timed out retrieving {url}") from None
         if encoding == "gzip":
             body = gunzip_limited(body, self.max_bytes)

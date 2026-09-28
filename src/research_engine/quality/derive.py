@@ -5,12 +5,19 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
-from typing import Optional
 
 from ..calendar import HALF_DAYS, QUARTER_DAYS
 from ..expressions import ExpressionError, evaluate, is_additive, referenced_names
 from ..schemas.financial import (
-    ExtractionMethod, FinancialFact, FiscalPeriodCode as C, Period, PeriodType, Provenance, make_fact_id,
+    ExtractionMethod,
+    FinancialFact,
+    Period,
+    PeriodType,
+    Provenance,
+    make_fact_id,
+)
+from ..schemas.financial import (
+    FiscalPeriodCode as C,
 )
 from ..schemas.framework import IndustryFramework, MetricSpec
 from .index import FactIndex
@@ -31,7 +38,7 @@ INTERIM_RULES: tuple[tuple[C, C, tuple[C, ...]], ...] = (
 _TARGET_DAYS = {C.Q2: QUARTER_DAYS, C.Q3: QUARTER_DAYS, C.Q4: QUARTER_DAYS, C.H2: HALF_DAYS}
 
 
-def _derived_fact(company_id: str, metric_id: str, value: Decimal, unit: str, currency: Optional[str],
+def _derived_fact(company_id: str, metric_id: str, value: Decimal, unit: str, currency: str | None,
                   period: Period, inputs: list[FinancialFact], formula: str, notes: str) -> FinancialFact:
     input_ids = tuple(f.fact_id for f in inputs)
     return FinancialFact(
@@ -65,7 +72,7 @@ def derive_interim(index: FactIndex, framework: IndustryFramework, company_id: s
                     minuend = periods[minuend_code]
                     subs = sorted((periods[c] for c in sub_codes), key=lambda f: f.period.end)
                     if subs[0].period.start != minuend.period.start or any(
-                        nxt.period.start != prev.period.end + timedelta(days=1) for prev, nxt in zip(subs, subs[1:])
+                        nxt.period.start != prev.period.end + timedelta(days=1) for prev, nxt in zip(subs, subs[1:], strict=False)
                     ) or subs[-1].period.end >= minuend.period.end:
                         report.derivations[f"interim_periods_not_contiguous:{spec.id}"] += 1
                         continue
@@ -94,7 +101,8 @@ def derive_interim(index: FactIndex, framework: IndustryFramework, company_id: s
 def _topological(framework: IndustryFramework) -> list[MetricSpec]:
     specs = {m.id: m for m in framework.metrics if m.derivation}
     deps = {mid: referenced_names(spec.derivation) & set(specs) for mid, spec in specs.items()}
-    ordered, done = [], set()
+    ordered: list = []
+    done: set[str] = set()
     while len(ordered) < len(specs):
         ready = sorted(mid for mid in specs if mid not in done and deps[mid] <= done)
         for mid in ready:  # acyclic is guaranteed by framework validation
@@ -103,7 +111,7 @@ def _topological(framework: IndustryFramework) -> list[MetricSpec]:
     return ordered
 
 
-def _output_unit(spec: MetricSpec, inputs: list[FinancialFact]) -> tuple[Optional[tuple[str, Optional[str]]], Optional[str]]:
+def _output_unit(spec: MetricSpec, inputs: list[FinancialFact]) -> tuple[tuple[str, str | None] | None, str | None]:
     currencies = {f.currency for f in inputs if f.currency}
     if len(currencies) > 1:
         return None, "mixed_currency"
@@ -139,7 +147,7 @@ def derive_framework_metrics(index: FactIndex, framework: IndustryFramework, com
                 else:
                     summary.not_evaluable += 1
                 continue
-            env = {n: i.value for n, i in zip(names, inputs)}
+            env = {n: i.value for n, i in zip(names, inputs, strict=True)}
             if existing is not None:
                 # Reported value wins. Where the definition is additive and inputs are reported, test consistency.
                 if not additive or any(i.provenance is Provenance.DERIVED for i in inputs):

@@ -6,17 +6,23 @@ import hashlib
 import os
 import sqlite3
 import tempfile
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Iterator, Literal, Optional
+from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import ValidationError
 
 from ..errors import RegistryError, format_validation_error
 from ..schemas.company import SourceRef
-from ..schemas.document import ALLOWED_TRANSITIONS, DocumentRecord, DocumentStatus, DocumentType
+from ..schemas.document import (
+    ALLOWED_TRANSITIONS,
+    DocumentRecord,
+    DocumentStatus,
+    DocumentType,
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
@@ -119,7 +125,7 @@ class DocumentRegistry:
     def _row_to_record(self, row: sqlite3.Row) -> DocumentRecord:
         return DocumentRecord.model_validate(dict(row))
 
-    def find(self, document_id: str) -> Optional[DocumentRecord]:
+    def find(self, document_id: str) -> DocumentRecord | None:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM documents WHERE document_id = ?", (document_id,)).fetchone()
         return self._row_to_record(row) if row else None
@@ -133,9 +139,9 @@ class DocumentRegistry:
     def list_documents(
         self,
         *,
-        company_id: Optional[str] = None,
-        status: Optional[DocumentStatus] = None,
-        document_type: Optional[DocumentType] = None,
+        company_id: str | None = None,
+        status: DocumentStatus | None = None,
+        document_type: DocumentType | None = None,
         include_superseded: bool = False,
     ) -> list[DocumentRecord]:
         clauses, params = [], []
@@ -178,7 +184,7 @@ class DocumentRegistry:
         return [dict(r) for r in rows]
 
     # ---- writes ------------------------------------------------------------------------
-    def _save(self, record: DocumentRecord, from_status: Optional[DocumentStatus], note: Optional[str]) -> None:
+    def _save(self, record: DocumentRecord, from_status: DocumentStatus | None, note: str | None) -> None:
         payload = record.model_dump(mode="json")
         placeholders = ", ".join(f":{c}" for c in _COLUMNS)
         with self._connect() as conn:
@@ -221,7 +227,7 @@ class DocumentRegistry:
         self._save(record, None, source.label)
         return record
 
-    def _extension(self, record: DocumentRecord, content_type: Optional[str]) -> str:
+    def _extension(self, record: DocumentRecord, content_type: str | None) -> str:
         if content_type:
             ext = _EXT_BY_CONTENT_TYPE.get(content_type.split(";")[0].strip().lower())
             if ext:
@@ -230,7 +236,7 @@ class DocumentRegistry:
         suffix = PurePosixPath(location or "").suffix.lower()
         return suffix if suffix in _KNOWN_EXT else ".bin"
 
-    def _write_raw(self, record: DocumentRecord, content: bytes, digest: str, content_type: Optional[str]) -> Path:
+    def _write_raw(self, record: DocumentRecord, content: bytes, digest: str, content_type: str | None) -> Path:
         target = self.raw_root / record.company_id / digest[:2] / f"{digest}{self._extension(record, content_type)}"
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
@@ -251,7 +257,7 @@ class DocumentRegistry:
         return target
 
     def _mark_retrieved(self, record: DocumentRecord, content: bytes, digest: str,
-                        content_type: Optional[str], retrieved_at: Optional[datetime]) -> DocumentRecord:
+                        content_type: str | None, retrieved_at: datetime | None) -> DocumentRecord:
         target = self._write_raw(record, content, digest, content_type)
         updated = self._rebuild(
             record,
@@ -272,8 +278,8 @@ class DocumentRegistry:
         document_id: str,
         content: bytes,
         *,
-        content_type: Optional[str] = None,
-        retrieved_at: Optional[datetime] = None,
+        content_type: str | None = None,
+        retrieved_at: datetime | None = None,
         on_change: Literal["refuse", "new_version"] = "refuse",
     ) -> DocumentRecord:
         """Store retrieved bytes. Identical content is a no-op (cache hit). Changed content is either
@@ -297,7 +303,7 @@ class DocumentRegistry:
         return self._mark_retrieved(record, content, digest, content_type, retrieved_at)
 
     def _store_new_version(self, previous: DocumentRecord, content: bytes, digest: str,
-                           content_type: Optional[str], retrieved_at: Optional[datetime]) -> DocumentRecord:
+                           content_type: str | None, retrieved_at: datetime | None) -> DocumentRecord:
         if previous.status is DocumentStatus.FAILED:
             raise RegistryError(f"{previous.document_id}: retry the failed document before storing a new version")
         source_key = previous.source_url or previous.local_source_path
@@ -325,9 +331,9 @@ class DocumentRegistry:
         document_id: str,
         status: DocumentStatus,
         *,
-        parser_version: Optional[str] = None,
-        error: Optional[str] = None,
-        note: Optional[str] = None,
+        parser_version: str | None = None,
+        error: str | None = None,
+        note: str | None = None,
     ) -> DocumentRecord:
         record = self.get(document_id)
         allowed = ALLOWED_TRANSITIONS[record.status]

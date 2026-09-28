@@ -9,16 +9,18 @@ synthetic or rounded disclosures) from inflating the tolerance.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from decimal import Decimal
-from typing import Iterable, Optional
 
 MAX_PRESENTATION_UNIT = Decimal(10) ** 6
 
 
-def presentation_unit(value: Decimal) -> Optional[Decimal]:
-    if value == 0:
+def presentation_unit(value: Decimal) -> Decimal | None:
+    if value == 0 or not value.is_finite():
+        # NaN and infinity have no presentation unit; `as_tuple().exponent` is a string for them.
         return None
     exponent = value.normalize().as_tuple().exponent
+    assert isinstance(exponent, int)  # guaranteed by is_finite above
     return min(Decimal(10) ** exponent, MAX_PRESENTATION_UNIT)
 
 

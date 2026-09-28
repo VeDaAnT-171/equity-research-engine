@@ -9,13 +9,19 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from ..errors import ResearchEngineError
 from ..versioning import version_stamp
 from . import models as m
 from . import repository as repo
-from .repository import Repository, StageNotRun, UnknownChart, UnknownCompany, UnknownNode
+from .repository import (
+    Repository,
+    StageNotRun,
+    UnknownChart,
+    UnknownCompany,
+    UnknownNode,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -127,7 +133,7 @@ def create_app(companies_root: Path):
     # ---- forecast -------------------------------------------------------------------------
 
     @app.get("/api/companies/{company_id}/forecast", tags=["forecast"], response_model=m.Forecast)
-    def forecast(company_id: str, scenario: Optional[str] = Query(default=None)):
+    def forecast(company_id: str, scenario: str | None = Query(default=None)):
         data = guarded(repo.forecast_of, company(company_id))
         if scenario is not None:
             matched = [s for s in data["scenarios"] if s["id"] == scenario]
@@ -191,12 +197,33 @@ def create_app(companies_root: Path):
     return app
 
 
+LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+
+def is_loopback(host: str) -> bool:
+    return host in LOOPBACK
+
+
 def serve(companies_root: Path, host: str = "127.0.0.1", port: int = 8000,
-          reload: bool = False) -> None:
+          allow_public_bind: bool = False) -> None:
+    """Run the dashboard.
+
+    The API has no authentication and serves a company's full research output, including the
+    local paths its documents came from. Binding it to a reachable interface publishes all of
+    that to anyone who can route to the port, so a non-loopback bind has to be asked for
+    explicitly rather than reached by passing --host without thinking about it.
+    """
     _require_fastapi()
     try:
         import uvicorn
     except ImportError:  # pragma: no cover - covered by _require_fastapi
         raise ResearchEngineError('the dashboard needs uvicorn: pip install -e ".[api]"') from None
+    if not is_loopback(host) and not allow_public_bind:
+        raise ResearchEngineError(
+            f"refusing to bind to {host!r}: this server has no authentication and exposes every "
+            "figure, document path and source URL in the workspace. Serve on 127.0.0.1 and use an "
+            "SSH tunnel, or pass --allow-public-bind if you have put your own authentication and "
+            "transport security in front of it."
+        )
     os.environ.setdefault("RESEARCH_ENGINE_COMPANIES", str(Path(companies_root).resolve()))
     uvicorn.run(create_app(companies_root), host=host, port=port, log_level="info")

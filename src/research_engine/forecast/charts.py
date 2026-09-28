@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import matplotlib
 
@@ -39,16 +38,16 @@ class ForecastChartRecord:
     metric_id: str
     title: str
     unit_kind: str
-    currency: Optional[str]
+    currency: str | None
     files: list[str]
     series: dict[str, list[str]]        # scenario -> forecast value ids, for lineage
-    base_year: Optional[int]
+    base_year: int | None
     years: list[int]
     scenarios: list[str]
     # The accessible fallback the chart guidance requires: the same numbers as a table.
     table: dict[str, dict[str, float]] = field(default_factory=dict)
     methods: dict[str, str] = field(default_factory=dict)
-    skipped: Optional[str] = None
+    skipped: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -104,8 +103,8 @@ def render_forecast_chart(metric_id: str, by_scenario: dict[str, list[ForecastVa
         xs = [v.fiscal_year for v in values]
         ys = [float(v.value) for v in values]
 
-        actual = [(x, y) for x, y, v in zip(xs, ys, values) if v.fiscal_year <= base_year]
-        ahead = [(x, y) for x, y, v in zip(xs, ys, values) if v.fiscal_year >= base_year]
+        actual = [(x, y) for x, y, v in zip(xs, ys, values, strict=True) if v.fiscal_year <= base_year]
+        ahead = [(x, y) for x, y, v in zip(xs, ys, values, strict=True) if v.fiscal_year >= base_year]
         if actual:
             ax.plot([p[0] for p in actual], [p[1] for p in actual], color=colour, linewidth=2.0,
                     solid_capstyle="round", zorder=3)
@@ -115,7 +114,7 @@ def render_forecast_chart(metric_id: str, by_scenario: dict[str, list[ForecastVa
                 line.set_dashes(dash)
             else:
                 line.set_dashes((4, 2))  # every projection is dashed, base case included
-        for x, y, v in zip(xs, ys, values):
+        for x, y, v in zip(xs, ys, values, strict=True):
             ax.plot([x], [y], marker="o", markersize=4.5, color=colour, zorder=4,
                     markerfacecolor=colour if v.is_actual else "white")
         if ahead:

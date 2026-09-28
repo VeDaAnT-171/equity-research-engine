@@ -5,10 +5,14 @@ import pytest
 from research_engine.errors import ConfigError
 from research_engine.forecast import AssumptionSet, load_assumptions_file
 from research_engine.forecast.assumptions import (
-    AssumptionUnavailable, SeedInput, annual_analytic_series, seed_growth, seed_level,
+    AssumptionUnavailable,
+    SeedInput,
+    annual_analytic_series,
+    seed_growth,
+    seed_level,
 )
-from research_engine.schemas.assumption import Assumption, AssumptionType
 from research_engine.schemas.analytics import AnalyticValue, make_value_id
+from research_engine.schemas.assumption import Assumption, AssumptionType
 
 from .factories import fy, reported
 

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable, Mapping
 
 from ..errors import LineageError
 from ..schemas.document import DocumentRecord
@@ -112,7 +112,7 @@ class LineageGraph:
         }
 
     @classmethod
-    def from_records(cls, documents: Iterable[DocumentRecord], facts: Iterable[FinancialFact]) -> "LineageGraph":
+    def from_records(cls, documents: Iterable[DocumentRecord], facts: Iterable[FinancialFact]) -> LineageGraph:
         graph = cls()
         for doc in documents:
             location = doc.source_url or doc.local_source_path

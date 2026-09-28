@@ -13,19 +13,23 @@ number it could not compute is worse than one that is visibly incomplete.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Iterable, Optional
 
 from ..expressions import ExpressionError, evaluate
 from ..schemas.analytics import AnalyticValue
-from ..schemas.assumption import Assumption, AssumptionType
+from ..schemas.assumption import Assumption
 from ..schemas.financial import FinancialFact, FiscalPeriodCode
 from ..schemas.forecast import BASE_SCENARIO, ForecastValue, make_forecast_id
 from ..schemas.framework import IndustryFramework
 from .assumptions import (
-    AssumptionSet, AssumptionUnavailable, annual_analytic_series, annual_metric_series,
-    growth_key, level_key, rate_key, seed_growth, seed_level,
+    AssumptionSet,
+    AssumptionUnavailable,
+    annual_analytic_series,
+    annual_metric_series,
+    seed_growth,
+    seed_level,
 )
 from .drivers import DriverGraph, build_driver_graph
 
@@ -65,7 +69,7 @@ def seed_assumptions(framework: IndustryFramework, graph: DriverGraph, *, compan
 
     for key in graph.assumption_keys:
         prefix, _, name = key.partition(".")
-        assumption: Optional[Assumption] = None
+        assumption: Assumption | None = None
         if prefix == "growth":
             seed = metric_series.get(name)
             if seed is None:
@@ -117,7 +121,7 @@ class _Projector:
         except AssumptionUnavailable as exc:
             raise NotProjected(exc.reason) from None
 
-    def _currency(self, metric_id: str, inputs: Iterable[ForecastValue]) -> Optional[str]:
+    def _currency(self, metric_id: str, inputs: Iterable[ForecastValue]) -> str | None:
         spec = self.metrics[metric_id]
         if spec.unit_kind not in ("currency", "currency_per_share"):
             return None

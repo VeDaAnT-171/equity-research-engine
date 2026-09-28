@@ -1,16 +1,49 @@
 # Equity Research Engine
 
-A company-agnostic engine that turns primary company disclosures into reproducible, auditable equity research.
-The company is an **input** (a YAML file). The engine is the product.
+[![CI](https://github.com/VeDaAnT-171/equity-research-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/VeDaAnT-171/equity-research-engine/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 
-> **Status: Phase 5 of 8 — forecast.** SEC XBRL data is retrieved, identity-checked, completed with derived
-> facts, tested against accounting identities, turned into framework-defined analytics and charts, and now
-> projected forward through the framework's driver graph under an assumption registry and named scenarios.
-> Every projected figure traces to the assumption behind it and on to a filed document, and a read-only
-> dashboard makes that trace clickable. Valuation and report rendering are **not built yet**.
-> `make research` fails loudly until they are.
+A company-agnostic engine that turns primary company disclosures into reproducible, auditable
+equity research. **The company is an input — a YAML file. The engine is the product.**
+
+Add a company by writing `companies/<exchange>-<ticker>/config.yaml`. There is no code to change,
+and CI fails if any configured company's name, ticker or CIK appears anywhere in the engine.
+
+```
+SEC XBRL  →  canonical facts  →  quality checks  →  analytics  →  forecast  →  dashboard
+             (every one cites      (missing is        (model        (assumptions   (every figure
+              its source)           never a pass)      output)       are cited)     is traceable)
+```
+
+> ### Status: pre-1.0, phase 5 of 8
 >
-> All tests run on **synthetic** SEC-format data. The engine has not yet been run against a live filing.
+> **Built:** ingestion, data quality, historical analytics, driver-graph forecast with scenarios,
+> and a read-only API and dashboard. Every projected figure traces to the assumption behind it and
+> on to a filed document.
+>
+> **Not built:** valuation, the research report, and a second contrasting company taken end to
+> end. `make research` fails loudly rather than producing a partial report.
+>
+> **Not yet validated against a live filing.** All 288 tests run on synthetic SEC-format fixtures.
+> Behaviour on real filings is untested, and that is the single most useful thing anyone could
+> change. See [DISCLAIMER.md](DISCLAIMER.md) before relying on any output.
+
+## Why it is built this way
+
+Most research tooling fails quietly: a missing value becomes a zero, a stale figure becomes a
+trend, a check with no data looks like a check that passed. This engine is built so that the
+failure modes are loud and the successes are checkable.
+
+- **Nothing is computed twice.** The API serves what the pipeline wrote; the dashboard shows what
+  the API served. One definition of every ratio, in one place.
+- **Missing is never fine.** A check without data is "not evaluable". A metric the forecast cannot
+  derive is refused with a counted reason. A pipeline stage that has not run returns a 409, not an
+  empty page.
+- **Provenance is structural, not documentary.** A reported fact that cites no source cannot be
+  constructed. Management guidance without a cited document is rejected by the type system.
+- **Industry knowledge is data.** Metrics, derivations, drivers, checks, charts and valuation
+  policy live in YAML, so a bank never gets an EV/EBITDA and a software company never gets a P/TBV.
 
 ## What works today
 
@@ -40,8 +73,8 @@ The company is an **input** (a YAML file). The engine is the product.
 ## Quick start
 
 ```bash
-make install
-make test
+make install-api     # engine + dashboard; `make install` omits the dashboard extras
+make check           # tests, lint, types — the same gate CI runs
 make frameworks
 make validate CONFIG=companies/nyse-jpm/config.yaml
 cp .env.example .env   # set SEC_USER_AGENT="Your Name you@example.com"
@@ -202,6 +235,22 @@ Later: PDF/HTML KPI extraction, ESEF adapter, event studies.
 - Accessibility is verified automatically (axe-core) and by scripted keyboard walkthrough, not by manual audit with a
   screen reader. Automated tools catch roughly a third of real barriers; a genuine audit has not been done.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the invariants a change must not break, and
+[CHANGELOG.md](CHANGELOG.md) for what changed when.
+
+The most useful contribution is the least glamorous: run the pipeline against a real SEC filer and
+report what breaks.
+
+## Licence
+
+[MIT](LICENSE).
+
 ## Disclaimer
 
-Research tooling, not investment advice.
+**Research tooling, not investment advice.** Output beyond the extracted facts is model output —
+an arithmetic consequence of stated assumptions, carrying no claim about what a company will do.
+Publishing research or price projections about securities to other people is a regulated activity
+in most jurisdictions. Read [DISCLAIMER.md](DISCLAIMER.md) before relying on or distributing
+anything this produces.

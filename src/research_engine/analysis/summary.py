@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import statistics
-from typing import Optional
 
 from ..schemas.analytics import AnalyticValue
 from ..schemas.framework import IndustryFramework
@@ -11,14 +10,14 @@ from ..schemas.framework import IndustryFramework
 MIN_TREND_POINTS = 5
 
 
-def _consecutive_tail(years: list[int], length: int) -> Optional[list[int]]:
+def _consecutive_tail(years: list[int], length: int) -> list[int] | None:
     tail = years[-length:]
     if len(tail) == length and tail[-1] - tail[0] == length - 1:
         return tail
     return None
 
 
-def _cagr(first: float, last: float, span: int) -> Optional[float]:
+def _cagr(first: float, last: float, span: int) -> float | None:
     if span <= 0 or first <= 0 or last <= 0:
         return None
     return (last / first) ** (1 / span) - 1
@@ -26,10 +25,11 @@ def _cagr(first: float, last: float, span: int) -> Optional[float]:
 
 def ols_slope(xs: list[int], ys: list[float]) -> float:
     mx, my = statistics.fmean(xs), statistics.fmean(ys)
-    return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sum((x - mx) ** 2 for x in xs)
+    return (sum((x - mx) * (y - my) for x, y in zip(xs, ys, strict=True))
+            / sum((x - mx) ** 2 for x in xs))
 
 
-def max_drawdown(points: list[tuple[int, float]]) -> Optional[dict]:
+def max_drawdown(points: list[tuple[int, float]]) -> dict | None:
     """Largest peak-to-trough decline in a positive annual series."""
     if len(points) < 2 or any(v <= 0 for _, v in points):
         return None

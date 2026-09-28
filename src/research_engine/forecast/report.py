@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
+from ..analysis.report import fmt
 from ..schemas.assumption import AssumptionType
 from ..schemas.framework import IndustryFramework
-from ..analysis.report import fmt
 from .engine import ForecastResult
 
 METHOD_LABEL = {

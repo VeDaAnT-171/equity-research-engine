@@ -6,14 +6,18 @@ import hashlib
 from datetime import date
 from decimal import Decimal
 from enum import Enum
-from typing import Optional
 
 from pydantic import Field, model_validator
 
 from ..expressions import referenced_names
 from .common import (
-    CURRENCY_PATTERN, DOCUMENT_ID_PATTERN, FACT_ID_PATTERN, METRIC_ID_PATTERN, SLUG_PATTERN,
-    XBRL_CONCEPT_PATTERN, StrictModel,
+    CURRENCY_PATTERN,
+    DOCUMENT_ID_PATTERN,
+    FACT_ID_PATTERN,
+    METRIC_ID_PATTERN,
+    SLUG_PATTERN,
+    XBRL_CONCEPT_PATTERN,
+    StrictModel,
 )
 
 
@@ -35,13 +39,13 @@ class FiscalPeriodCode(str, Enum):
 
 class Period(StrictModel):
     period_type: PeriodType
-    start: Optional[date] = None
+    start: date | None = None
     end: date
     fiscal_year: int = Field(ge=1900, le=2200)
     fiscal_period: FiscalPeriodCode
 
     @model_validator(mode="after")
-    def _shape(self) -> "Period":
+    def _shape(self) -> Period:
         if self.period_type is PeriodType.DURATION:
             if self.start is None:
                 raise ValueError("duration periods require a start date")
@@ -75,18 +79,18 @@ class ExtractionMethod(str, Enum):
 
 class SourceLocation(StrictModel):
     document_id: str = Field(pattern=DOCUMENT_ID_PATTERN)
-    page: Optional[int] = Field(default=None, ge=1)
-    table: Optional[str] = None
-    xbrl_concept: Optional[str] = Field(default=None, pattern=XBRL_CONCEPT_PATTERN)
-    xbrl_context: Optional[str] = None
+    page: int | None = Field(default=None, ge=1)
+    table: str | None = None
+    xbrl_concept: str | None = Field(default=None, pattern=XBRL_CONCEPT_PATTERN)
+    xbrl_context: str | None = None
     # Filing that originally disclosed the value (a companyfacts snapshot aggregates many filings)
-    filing_accession: Optional[str] = Field(default=None, pattern=r"^\d{10}-\d{2}-\d{6}$")
-    filing_form: Optional[str] = None
-    filed_date: Optional[date] = None
-    source_text: Optional[str] = Field(default=None, max_length=1000)
+    filing_accession: str | None = Field(default=None, pattern=r"^\d{10}-\d{2}-\d{6}$")
+    filing_form: str | None = None
+    filed_date: date | None = None
+    source_text: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
-    def _pinned(self) -> "SourceLocation":
+    def _pinned(self) -> SourceLocation:
         if not (self.page or self.table or self.xbrl_concept):
             raise ValueError(
                 "a source location must pin the value to a page, table, or XBRL concept; "
@@ -101,18 +105,18 @@ class FinancialFact(StrictModel):
     metric_id: str = Field(pattern=METRIC_ID_PATTERN)
     value: Decimal
     unit: str = Field(min_length=1)          # e.g. USD, USD/share, shares, pure
-    currency: Optional[str] = Field(default=None, pattern=CURRENCY_PATTERN)
+    currency: str | None = Field(default=None, pattern=CURRENCY_PATTERN)
     period: Period
     provenance: Provenance
     extraction_method: ExtractionMethod
-    source: Optional[SourceLocation] = None  # reported facts
+    source: SourceLocation | None = None  # reported facts
     inputs: tuple[str, ...] = ()             # derived facts: input fact_ids
-    formula: Optional[str] = None            # derived facts
+    formula: str | None = None            # derived facts
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
-    notes: Optional[str] = None
+    notes: str | None = None
 
     @model_validator(mode="after")
-    def _lineage(self) -> "FinancialFact":
+    def _lineage(self) -> FinancialFact:
         if not self.value.is_finite():
             raise ValueError("value must be a finite number")
         if self.provenance is Provenance.REPORTED:

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import Field, model_validator
 
-from .common import DOCUMENT_ID_PATTERN, FISCAL_PERIOD_LABEL_PATTERN, SLUG_PATTERN, StrictModel
+from .common import (
+    DOCUMENT_ID_PATTERN,
+    FISCAL_PERIOD_LABEL_PATTERN,
+    SLUG_PATTERN,
+    StrictModel,
+)
 
 
 class DocumentType(str, Enum):
@@ -53,24 +57,24 @@ class DocumentRecord(StrictModel):
     document_id: str = Field(pattern=DOCUMENT_ID_PATTERN)
     company_id: str = Field(pattern=SLUG_PATTERN)
     document_type: DocumentType
-    source_url: Optional[str] = None
-    local_source_path: Optional[str] = None
-    raw_path: Optional[str] = None
-    publication_date: Optional[date] = None
-    fiscal_period: Optional[str] = Field(default=None, pattern=FISCAL_PERIOD_LABEL_PATTERN)
-    retrieval_timestamp: Optional[datetime] = None
-    file_hash: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    content_type: Optional[str] = None
-    size_bytes: Optional[int] = Field(default=None, ge=0)
+    source_url: str | None = None
+    local_source_path: str | None = None
+    raw_path: str | None = None
+    publication_date: date | None = None
+    fiscal_period: str | None = Field(default=None, pattern=FISCAL_PERIOD_LABEL_PATTERN)
+    retrieval_timestamp: datetime | None = None
+    file_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    content_type: str | None = None
+    size_bytes: int | None = Field(default=None, ge=0)
     status: DocumentStatus
-    parser_version: Optional[str] = None
-    error: Optional[str] = None
-    supersedes: Optional[str] = Field(default=None, pattern=DOCUMENT_ID_PATTERN)
+    parser_version: str | None = None
+    error: str | None = None
+    supersedes: str | None = Field(default=None, pattern=DOCUMENT_ID_PATTERN)
     registered_at: datetime
     updated_at: datetime
 
     @model_validator(mode="after")
-    def _consistency(self) -> "DocumentRecord":
+    def _consistency(self) -> DocumentRecord:
         if (self.source_url is None) == (self.local_source_path is None):
             raise ValueError("a document must have exactly one of source_url / local_source_path")
         if self.status in _HAS_CONTENT and not (self.file_hash and self.raw_path and self.retrieval_timestamp):

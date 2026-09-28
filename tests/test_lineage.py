@@ -6,8 +6,17 @@ import pytest
 from research_engine.errors import LineageError
 from research_engine.lineage import LineageGraph, LineageNode, NodeKind
 from research_engine.schemas import (
-    DocumentRecord, DocumentStatus, DocumentType, ExtractionMethod, FinancialFact, FiscalPeriodCode, Period,
-    PeriodType, Provenance, SourceLocation, make_fact_id,
+    DocumentRecord,
+    DocumentStatus,
+    DocumentType,
+    ExtractionMethod,
+    FinancialFact,
+    FiscalPeriodCode,
+    Period,
+    PeriodType,
+    Provenance,
+    SourceLocation,
+    make_fact_id,
 )
 
 NOW = datetime(2026, 2, 1, tzinfo=timezone.utc)

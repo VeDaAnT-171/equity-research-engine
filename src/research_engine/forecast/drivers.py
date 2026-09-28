@@ -25,10 +25,10 @@ in the forecast report; it is never silent.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ..errors import ForecastError
 from ..expressions import referenced_names
+from ..schemas.forecast import ForecastMethod
 from ..schemas.framework import IndustryFramework
 from .assumptions import growth_key, level_key, rate_key
 
@@ -38,9 +38,9 @@ class ProjectionRule:
     """How one metric is produced in a forecast year."""
 
     metric_id: str
-    method: str                              # driver_formula | derivation | growth | level
+    method: ForecastMethod                   # driver_formula | derivation | growth | level
     formula: str                             # recorded on every value produced
-    driver_id: Optional[str] = None
+    driver_id: str | None = None
     metric_inputs: tuple[str, ...] = ()      # same-year metric dependencies
     assumption_keys: tuple[str, ...] = ()    # exogenous inputs resolved from the registry
     reason: str = ""                         # why this rule and not another
@@ -63,10 +63,10 @@ class DriverGraph:
         return self.rules[metric_id]
 
 
-def _find_cycle(rules: dict[str, ProjectionRule]) -> Optional[list[str]]:
+def _find_cycle(rules: dict[str, ProjectionRule]) -> list[str] | None:
     state: dict[str, int] = {}
 
-    def visit(node: str, path: list[str]) -> Optional[list[str]]:
+    def visit(node: str, path: list[str]) -> list[str] | None:
         if state.get(node) == 2:
             return None
         if state.get(node) == 1:

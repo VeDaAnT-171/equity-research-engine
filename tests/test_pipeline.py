@@ -1,6 +1,4 @@
 import json
-import textwrap
-from decimal import Decimal
 
 import pytest
 

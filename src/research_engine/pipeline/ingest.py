@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
 from ..calendar import FiscalCalendar
@@ -19,7 +18,13 @@ from ..schemas.company import ProjectConfig
 from ..schemas.document import DocumentRecord, DocumentStatus, DocumentType
 from ..schemas.financial import FinancialFact
 from ..sources.base import find_source
-from ..sources.sec import SEC_HOST, SEC_SOURCES, EntityProfile, SecCompanyFacts, SecSubmissions
+from ..sources.sec import (
+    SEC_HOST,
+    SEC_SOURCES,
+    EntityProfile,
+    SecCompanyFacts,
+    SecSubmissions,
+)
 from ..versioning import PARSER_VERSION
 from . import outputs
 
@@ -37,13 +42,13 @@ class IngestionResult:
     workspace: Path
     output_dir: Path
     outcomes: list[DocumentOutcome] = field(default_factory=list)
-    profile: Optional[EntityProfile] = None
-    calendar: Optional[FiscalCalendar] = None
-    framework: Optional[FrameworkSelection] = None
+    profile: EntityProfile | None = None
+    calendar: FiscalCalendar | None = None
+    framework: FrameworkSelection | None = None
     facts: list[FinancialFact] = field(default_factory=list)
-    extraction: Optional[ExtractionReport] = None
+    extraction: ExtractionReport | None = None
     warnings: list[str] = field(default_factory=list)
-    framework_sha256: Optional[str] = None
+    framework_sha256: str | None = None
 
     @property
     def failures(self) -> list[DocumentOutcome]:
@@ -74,8 +79,8 @@ def preflight(config: ProjectConfig) -> None:
             raise ConfigError(f"CIK mismatch: config has {cik} but {ref.url} is for CIK {url_cik}")
 
 
-def _retrieve(registry: DocumentRegistry, record: DocumentRecord, url: Optional[str], path: Optional[Path],
-              fetcher: Optional[Fetcher], refresh: bool, offline: bool) -> DocumentOutcome:
+def _retrieve(registry: DocumentRegistry, record: DocumentRecord, url: str | None, path: Path | None,
+              fetcher: Fetcher | None, refresh: bool, offline: bool) -> DocumentOutcome:
     current = registry.current_version(record.document_id)
     cached = current.file_hash is not None and current.status is not DocumentStatus.FAILED
     if cached and (not refresh or offline):
@@ -125,7 +130,7 @@ def run_ingestion(
     *,
     workspace: Path,
     frameworks: FrameworkRegistry,
-    fetcher: Optional[Fetcher],
+    fetcher: Fetcher | None,
     refresh: bool = False,
     offline: bool = False,
 ) -> IngestionResult:
@@ -143,7 +148,7 @@ def run_ingestion(
             retrieved[outcome.record.document_id] = (doc_type, ref.location, outcome.record)
 
     submissions = companyfacts = None
-    for doc_id, (doc_type, location, record) in retrieved.items():
+    for _doc_id, (doc_type, location, record) in retrieved.items():
         source = find_source(location, SEC_SOURCES) if doc_type is DocumentType.STRUCTURED_FILING else None
         if isinstance(source, SecSubmissions):
             submissions = record
@@ -200,7 +205,7 @@ def run_ingestion(
     else:
         result.warnings.append("no XBRL companyfacts source retrieved: no financial facts extracted")
 
-    for doc_id, (doc_type, location, record) in retrieved.items():
+    for _doc_id, (doc_type, location, _record) in retrieved.items():
         if doc_type is not DocumentType.STRUCTURED_FILING:
             result.warnings.append(f"{doc_type.value} retrieved but document parsing is not implemented yet: {location}")
 

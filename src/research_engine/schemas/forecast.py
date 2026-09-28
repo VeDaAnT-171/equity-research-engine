@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import Field, model_validator
 
@@ -37,7 +37,7 @@ class ScenarioSpec(StrictModel):
     description: str = ""
 
     @model_validator(mode="after")
-    def _base_is_reserved(self) -> "ScenarioSpec":
+    def _base_is_reserved(self) -> ScenarioSpec:
         if self.id == BASE_SCENARIO and self.description.strip() == "":
             # Allowed, but the base case still deserves a name.
             pass
@@ -52,7 +52,7 @@ class ForecastValue(StrictModel):
     fiscal_year: int = Field(ge=1900, le=2200)
     value: Decimal
     unit_kind: str = Field(min_length=1)
-    currency: Optional[str] = None
+    currency: str | None = None
     method: ForecastMethod
     formula: str = Field(min_length=1)
     # Exogenous inputs: which assumption supplied the rate/level, and at which rung of the ladder.
@@ -63,7 +63,7 @@ class ForecastValue(StrictModel):
     input_fact_ids: tuple[str, ...] = ()
 
     @model_validator(mode="after")
-    def _lineage(self) -> "ForecastValue":
+    def _lineage(self) -> ForecastValue:
         if not self.value.is_finite():
             raise ValueError("forecast value must be finite")
         if len(self.assumption_ids) != len(self.assumption_types):

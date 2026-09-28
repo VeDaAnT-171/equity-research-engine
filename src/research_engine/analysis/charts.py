@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import matplotlib
 
@@ -13,7 +12,11 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import FuncFormatter, MaxNLocator, PercentFormatter  # noqa: E402
 
 from ..schemas.analytics import AnalyticValue  # noqa: E402
-from ..schemas.financial import FinancialFact, FiscalPeriodCode, Provenance  # noqa: E402
+from ..schemas.financial import (  # noqa: E402
+    FinancialFact,
+    FiscalPeriodCode,
+    Provenance,
+)
 from ..schemas.framework import ChartSpec, IndustryFramework  # noqa: E402
 
 PALETTE = ("#1f3a5f", "#3f8f8a", "#8a8f98", "#c7862f", "#6b4c9a", "#b24a3b")
@@ -37,7 +40,7 @@ class Point:
     derived: bool
     flagged: bool
     lineage_id: str
-    currency: Optional[str] = None
+    currency: str | None = None
 
 
 @dataclass
@@ -49,7 +52,7 @@ class ChartRecord:
     years: list[int]
     derived_points: int
     flagged_points: int
-    skipped: Optional[str] = None
+    skipped: str | None = None
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -77,7 +80,8 @@ def _currency_formatter(max_abs: float, currency: str):
     for divisor, suffix in ((1e9, "bn"), (1e6, "m"), (1e3, "k")):
         if max_abs >= divisor:
             places = 1 if max_abs / divisor < 10 else 0
-            return FuncFormatter(lambda v, _: f"{v / divisor:,.{places}f}"), f"{currency} {suffix}"
+            return (FuncFormatter(lambda v, _, d=divisor, pl=places: f"{v / d:,.{pl}f}"),
+                    f"{currency} {suffix}")
     return FuncFormatter(lambda v, _: f"{v:,.0f}"), currency
 
 
@@ -104,7 +108,7 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
     fig, ax = plt.subplots(figsize=(7.2, 3.8), dpi=150)
     n = len(data)
     width = 0.8 / n
-    dagger_offsets = []
+    dagger_offsets: list[tuple[float, Point]] = []
     for i, (sid, pts) in enumerate(data.items()):
         color = PALETTE[i % len(PALETTE)]
         label = _label(sid, framework)
@@ -113,23 +117,24 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
         if spec.kind == "bar":
             offsets = [x - 0.4 + width * (i + 0.5) for x in xs]
             bars = ax.bar(offsets, ys, width=width * 0.92, color=color, label=label, zorder=2)
-            for bar, p in zip(bars, pts):
+            for bar, p in zip(bars, pts, strict=True):
                 if p.derived:
                     bar.set_hatch("////")
                     bar.set_facecolor("white")
                     bar.set_edgecolor(color)
-            dagger_offsets += [(o, p) for o, p in zip(offsets, pts)]
+            dagger_offsets += [(o, p) for o, p in zip(offsets, pts, strict=True)]
         else:
             ax.plot(xs, ys, color=color, linewidth=1.8, label=label, zorder=2)
-            for x, p in zip(xs, pts):
+            for x, p in zip(xs, pts, strict=True):
                 ax.plot([x], [p.value], marker="o", markersize=5, color=color,
                         markerfacecolor="white" if p.derived else color, zorder=3)
-            dagger_offsets += [(x, p) for x, p in zip(xs, pts)]
+            dagger_offsets += [(x, p) for x, p in zip(xs, pts, strict=True)]
         record.derived_points += sum(p.derived for p in pts)
         record.flagged_points += sum(p.flagged for p in pts)
-    for x, p in dagger_offsets:
-        if p.flagged:
-            ax.annotate("†", (x, p.value), textcoords="offset points", xytext=(0, 6), ha="center", color="#b24a3b")
+    for offset, point in dagger_offsets:
+        if point.flagged:
+            ax.annotate("†", (offset, point.value), textcoords="offset points", xytext=(0, 6),
+                        ha="center", color="#b24a3b")
 
     ax.set_xticks(range(len(years)), [f"FY{y}" for y in years])
     ax.grid(axis="y", color="#e3e6ea", linewidth=0.8, zorder=0)

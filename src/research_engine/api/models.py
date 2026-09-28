@@ -7,7 +7,7 @@ figure, and every field is populated from a file a pipeline stage wrote.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -30,21 +30,21 @@ class CompanySummary(Model):
     name: str
     ticker: str
     exchange: str
-    sector: Optional[str] = None
+    sector: str | None = None
     stages: Stages
 
 
 class FrameworkChoice(Model):
-    name: Optional[str] = None
-    method: Optional[str] = Field(default=None, description="How the framework was chosen")
-    evidence: Optional[str] = Field(default=None, description="The filing evidence behind it")
+    name: str | None = None
+    method: str | None = Field(default=None, description="How the framework was chosen")
+    evidence: str | None = Field(default=None, description="The filing evidence behind it")
 
 
 class ForecastHorizon(Model):
-    base_year: Optional[int] = None
+    base_year: int | None = None
     years: list[int] = []
     scenarios: list[str] = []
-    assumptions_file: Optional[str] = None
+    assumptions_file: str | None = None
 
 
 class Overview(Model):
@@ -53,23 +53,23 @@ class Overview(Model):
     ticker: str
     exchange: str
     country: str
-    sector: Optional[str] = None
-    reporting_currency: Optional[str] = None
+    sector: str | None = None
+    reporting_currency: str | None = None
     stages: Stages
-    framework: Optional[FrameworkChoice] = None
-    fiscal_calendar: Optional[dict[str, Any]] = None
-    versions: Optional[dict[str, Optional[str]]] = None
+    framework: FrameworkChoice | None = None
+    fiscal_calendar: dict[str, Any] | None = None
+    versions: dict[str, str | None] | None = None
     counts: dict[str, Any] = {}
     warnings: list[str] = []
-    generated_at: Optional[str] = None
-    forecast_horizon: Optional[ForecastHorizon] = None
+    generated_at: str | None = None
+    forecast_horizon: ForecastHorizon | None = None
 
 
 class Document(Model):
     document_id: str
     status: str
-    file_hash: Optional[str] = None
-    source: Optional[str] = None
+    file_hash: str | None = None
+    source: str | None = None
 
 
 # ---- historical -----------------------------------------------------------------------------
@@ -89,14 +89,14 @@ class AnalyticSeries(Model):
     category: str
     kind: str
     unit_kind: str
-    currency: Optional[str] = None
+    currency: str | None = None
     points: list[AnalyticPoint]
-    summary: Optional[dict[str, Any]] = None
+    summary: dict[str, Any] | None = None
 
 
 class Analytics(Model):
     fiscal_years: list[int]
-    classification: Optional[str] = None
+    classification: str | None = None
     series: list[AnalyticSeries]
     not_computed: dict[str, int] = Field(
         default={}, description="Analytic-years the engine declined to compute, by reason")
@@ -118,8 +118,8 @@ class ChartData(Model):
 
     chart_id: str
     title: str
-    unit_kind: Optional[str] = None
-    currency: Optional[str] = None
+    unit_kind: str | None = None
+    currency: str | None = None
     columns: list[str]
     rows: list[dict[str, Any]]
 
@@ -139,7 +139,7 @@ class ForecastPoint(Model):
 class ForecastMetric(Model):
     metric_id: str
     unit_kind: str
-    currency: Optional[str] = None
+    currency: str | None = None
     points: list[ForecastPoint]
 
 
@@ -154,14 +154,14 @@ class ProjectionRule(Model):
     metric_id: str
     method: str
     formula: str
-    driver_id: Optional[str] = None
+    driver_id: str | None = None
     reason: str = ""
     metric_inputs: list[str] = []
     assumption_keys: list[str] = []
 
 
 class Forecast(Model):
-    base_year: Optional[int] = None
+    base_year: int | None = None
     forecast_years: list[int] = []
     scenarios: list[Scenario] = []
     projection_plan: list[ProjectionRule] = []
@@ -169,19 +169,19 @@ class Forecast(Model):
     unseeded: dict[str, str] = {}
     demoted_derivations: dict[str, str] = {}
     unresolved_targets: dict[str, str] = {}
-    assumptions_file: Optional[str] = None
+    assumptions_file: str | None = None
 
 
 class Assumption(Model):
     assumption_id: str
     description: str
-    value: Optional[float] = None
+    value: float | None = None
     unit: str
     type: str
-    period: Optional[str] = None
-    scenario: Optional[str] = None
-    rationale: Optional[str] = None
-    source_document_id: Optional[str] = None
+    period: str | None = None
+    scenario: str | None = None
+    rationale: str | None = None
+    source_document_id: str | None = None
     source_fact_ids: list[str] = []
 
 
@@ -190,7 +190,7 @@ class Assumptions(Model):
     assumptions: list[Assumption]
     scenarios: list[dict[str, Any]] = []
     unseeded: dict[str, str] = {}
-    base_year: Optional[int] = None
+    base_year: int | None = None
     forecast_years: list[int] = []
 
 
@@ -208,15 +208,15 @@ class Issue(Model):
     check: str
     severity: str
     message: str
-    metric_id: Optional[str] = None
-    period: Optional[str] = None
+    metric_id: str | None = None
+    period: str | None = None
     fact_ids: list[str] = []
 
 
 class Quality(Model):
     company_id: str
-    framework: Optional[str] = None
-    historical_years: Optional[int] = None
+    framework: str | None = None
+    historical_years: int | None = None
     counts: dict[str, int] = {}
     checks: dict[str, Check] = {}
     issues: list[Issue] = []
