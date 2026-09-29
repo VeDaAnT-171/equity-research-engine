@@ -61,7 +61,7 @@ def test_every_scenario_gets_a_distinct_line_style(framework, tmp_path):
     assert len(set(DASHES[:len(scenarios)])) == len(scenarios), "line styles must not repeat"
     # each scenario is named on the chart itself, so hue is never the only distinction
     for name in scenarios:
-        assert name in svg
+        assert name.capitalize() in svg
 
 
 def test_the_base_case_is_listed_first(framework, tmp_path):
@@ -128,10 +128,10 @@ def test_a_chart_built_on_a_fallback_says_so_in_the_image(framework, tmp_path):
     record = render_forecast_chart("revenue", {"base": marked}, framework, tmp_path, base_year=2025,
                                    company_label="Test Co", engine_version="x")
     assert record.fallback_for == ["net_interest_income"]
-    assert "Rests on net_interest_income projected by its own trend" in (tmp_path / "forecast_revenue.svg").read_text()
+    assert "Uses a trend estimate for" in (tmp_path / "forecast_revenue.svg").read_text()
 
 
 def test_a_chart_on_the_declared_model_carries_no_fallback_caption(framework, tmp_path):
     record = render_forecast_chart("revenue", {"base": _series("base", [1100, 1200])}, framework, tmp_path,
                                    base_year=2025, company_label="Test Co", engine_version="x")
-    assert record.fallback_for == [] and "Rests on" not in (tmp_path / "forecast_revenue.svg").read_text()
+    assert record.fallback_for == [] and "trend estimate" not in (tmp_path / "forecast_revenue.svg").read_text()

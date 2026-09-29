@@ -9,7 +9,53 @@ more, so no interface here should be treated as stable.
 
 ## [Unreleased]
 
+### Changed
+
+- **The dashboard is rebuilt as a reader's product.** Sections are now Summary, Financials, Ratios,
+  Estimates and Data checks. A company header gives exchange, ticker, sector, fiscal year end,
+  history and the data date; headline tiles show the latest year with year-on-year change; the
+  financial statements are shown in millions with negatives in parentheses; estimates are headed
+  `FY2026E` and described as projections, not company guidance. Pipeline stages, engine and schema
+  versions, framework ids, metric ids and refusal codes no longer appear on the page. Verified in a
+  browser against the live filer's outputs, locally, as a static snapshot and in the hosted app,
+  with zero axe-core WCAG 2.1 AA violations across every section and the source panel.
+- **Refusals and data-check findings are explained in words.** `presentation.py` turns metric ids,
+  refusal codes and assumption keys into names and sentences, and describes each data-check finding
+  from its structured details (amounts formatted, revisions listed with their filings). Chart notes
+  and captions use the same wording and name the SEC as the source instead of the engine.
+- Hosted-app messages are written for visitors: failures say what happened in one sentence and keep
+  the technical detail in the server log.
+
 ### Added
+
+- API: `/glossary` (display names and vocabulary, written at analyze time so the API stays
+  framework-free), `/financials` (full-year statements, every value citing its fact) and `/checks`
+  (the data-quality report in words). The static export includes all three and the lineage trace
+  behind every statement cell.
+
+- **Hosted app (`research-engine app`): search any SEC filer and analyse it on demand.** Company
+  lookup against the SEC's own ticker index (one CIK is one company, whichever ticker is typed),
+  config generation from the index only, a single background worker running the four stages with
+  per-stage progress, a week of result reuse, per-visitor limits on new runs and a capped queue.
+  Every JSON response is scrubbed of local fields and the data directory's path; a test sweeps
+  every endpoint for it. The dashboard gains an accessible search form, run progress with
+  announced stage transitions, a warm-up view while the showcase company is analysed at start-up,
+  and a plain explanation when the SEC has no XBRL for a company. `render.yaml` deploys it to
+  Render's free plan. Built and verified in a browser against the live filer's real filings served
+  from disk, since this build environment cannot reach the SEC.
+
+- **`export-static`: the dashboard as static files.** GitHub Pages serves files and runs nothing,
+  so the dashboard, which reads a live API, showed only the rendered README there. The export
+  drives the API in-process, writes every answer the dashboard can request — including the lineage
+  trace behind each value it renders as traceable — and marks the page as a frozen snapshot with
+  its time and engine version. Local paths are removed, and the export refuses to write anything if
+  the workspace path, any home-directory path, or an e-mail address survives in any answer. A stage
+  that was not run is exported as the same refusal the live API gives, not as a missing file.
+- **The public dashboard rebuilds itself.** `.github/workflows/pages.yml` runs weekly, on demand and
+  on every push to `main`: every configured company goes through the whole pipeline on a clean
+  runner against the live SEC API, and the result is exported and deployed. It publishes only if
+  the tests pass, `quality --strict` finds no errors, every source downloads and the export's leak
+  check passes; otherwise the previous site stays up. `site/` is build output and is not committed.
 
 - **Declared fallback drivers.** A driver may declare `fallback: trend`. When the company has no
   base-year value for a metric the driver's formula needs, the metrics it affects are projected on

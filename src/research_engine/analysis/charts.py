@@ -12,6 +12,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import FuncFormatter, MaxNLocator, PercentFormatter  # noqa: E402
 
+from ..presentation import document_only_metrics, explain, labels, year_ranges  # noqa: E402
 from ..schemas.analytics import AnalyticValue  # noqa: E402
 from ..schemas.financial import (  # noqa: E402
     FinancialFact,
@@ -126,9 +127,11 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
     if not any(len(pts) >= 2 for pts in data.values()):
         record.skipped = "fewer_than_two_points"
         return record
+    names = labels(framework)
+    document_only = document_only_metrics(framework)
     missing = [sid for sid in spec.series if sid not in data]
     if missing:
-        record.notes.append(f"series without data: {', '.join(missing)}")
+        record.notes.append(f"No data for {', '.join(_label(sid, framework) for sid in missing)}.")
     currencies = {p.currency for pts in data.values() for p in pts if p.currency}
     if spec.format == "currency" and len(currencies) != 1:
         record.skipped = "currency_not_uniform"
@@ -150,16 +153,16 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
             # is not mistaken for a rendering artefact.
             reason = _reason_for(sid, not_computed)
             record.notes.append(
-                f"{_label(sid, framework)} has no value for {', '.join(f'FY{y}' for y in holes)}"
-                + (f" ({reason})" if reason else "")
+                f"{_label(sid, framework)} has no value for {year_ranges(holes)}."
+                + (f" {explain(reason, names, document_only=document_only)}" if reason else "")
             )
         last = pts[-1].year
         if last < years[-1]:
             record.truncated[sid] = last
             reason = _reason_for(sid, not_computed)
             record.notes.append(
-                f"{_label(sid, framework)} has no value after FY{last}"
-                + (f" ({reason})" if reason else "")
+                f"{_label(sid, framework)} has no value after FY{last}."
+                + (f" {explain(reason, names, document_only=document_only)}" if reason else "")
             )
     x_of = {y: i for i, y in enumerate(years)}
     fig, ax = plt.subplots(figsize=(7.2, 3.8), dpi=150)
@@ -219,11 +222,11 @@ def render_chart(spec: ChartSpec, framework: IndustryFramework, facts: list[Fina
     ax.text(0, 1.02, company_label, transform=ax.transAxes, color="#5b6470", fontsize=8.5)
     if len(spec.series) > 1:  # a multi-series chart names its series even when only one has data
         ax.legend(frameon=False, loc="upper left", bbox_to_anchor=(0, -0.12), ncol=min(n, 3), fontsize=8.5)
-    footnote = f"Source: company SEC XBRL filings; computed by research-engine {engine_version}."
+    footnote = "Source: company filings with the SEC."
     if record.derived_points:
-        footnote += " Hollow markers / hatched bars: derived by the engine."
+        footnote += " Hollow markers / hatched bars: calculated from other reported figures."
     if record.flagged_points:
-        footnote += " †: an input was flagged by data-quality checks."
+        footnote += " †: an input was flagged by a data check."
     if record.truncated:
         ends = "; ".join(f"{_label(sid, framework)} ends FY{y}" for sid, y in sorted(record.truncated.items()))
         footnote += f" Incomplete over the period shown — {ends}."

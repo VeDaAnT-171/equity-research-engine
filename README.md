@@ -10,6 +10,11 @@ equity research. **The company is an input — a YAML file. The engine is the pr
 Add a company by writing `companies/<exchange>-<ticker>/config.yaml`. There is no code to change,
 and CI fails if any configured company's name, ticker or CIK appears anywhere in the engine.
 
+**[Open the dashboard →](https://vedaant-171.github.io/equity-research-engine/)** Rebuilt every
+week from the latest SEC filings (JPMorgan Chase, FY2007 onward): the whole pipeline re-runs on a
+clean machine and republishes only if the tests and the data-quality gate pass. Every figure opens
+its lineage back to the filing it came from; the page shows which run it was built from.
+
 ```
 SEC XBRL  →  canonical facts  →  quality checks  →  analytics  →  forecast  →  dashboard
              (every one cites      (missing is        (model        (assumptions   (every figure
@@ -75,7 +80,7 @@ failure modes are loud and the successes are checkable.
 | Scenario forecast | `forecast/engine.py` | Fixed precedence ladder, per-year overrides, independent scenario projections; unset assumptions refuse to project rather than fall back |
 | Read-only API | `api/repository.py`, `api/app.py` | Serves only what the pipeline wrote; a stage that has not run returns 409 with the command to run, never an empty result that looks like a clean bill of health |
 | Forecast charts | `forecast/charts.py` | Solid to the last reported year, dashed after it; scenarios separated by line style and an end label, never by hue alone; a metric with no projection is skipped rather than drawn flat |
-| Dashboard | `api/static/` | Overview, analytics, scenario forecast, assumption ladder and quality report, with any figure clickable through to the filing it came from. Keyboard-operable throughout, every chart has a data table, no hover-only information. No build step, no JS dependencies |
+| Dashboard | `api/static/` | Summary, financial statements, ratios, estimates and data checks, with any figure clickable through to the filing it came from. Keyboard-operable throughout, every chart has a data table, no hover-only information. No build step, no JS dependencies |
 | Company-agnostic guard | `tests/test_company_agnostic.py` | CI fails if any configured company's ticker/name/CIK appears in engine code or frameworks |
 
 ## Quick start
@@ -149,14 +154,23 @@ make serve                # http://127.0.0.1:8000, reads every company under com
 make serve COMPANIES=/path/to/companies PORT=8100
 ```
 
-Five views over whatever the pipeline has written: **Overview** (entity, framework and the evidence
-that chose it, document hashes), **Historical** (analytics by category with the framework's charts),
-**Forecast** (per-scenario projections with the method and assumption rung behind each figure),
-**Assumptions** (the resolution ladder and each value's provenance) and **Data quality** (checks,
-issues, and what was not evaluable).
+Five sections per company, written for a reader rather than for the pipeline: **Summary** (headline
+figures with year-on-year change, key charts, the first years of the estimates), **Financials**
+(income statement, balance sheet and cash flow statement in millions, as filed), **Ratios**
+(grouped by growth, profitability, returns and so on, with charts and a plain-language list of what
+could not be calculated and why), **Estimates** (projections, the assumptions behind them and what
+was not estimated) and **Data checks** (each check in words, with every finding explained against
+the figures involved).
 
-Every number carrying a lineage id is clickable and opens its full chain — model output to fact to
-document to source URL, with XBRL concept, filing accession and filed date. The API computes
+Engine vocabulary stays out of the page. Metric ids, refusal codes and assumption keys are turned
+into names and sentences by one module, `presentation.py`, which the charts, the API and the
+dashboard all use — so "input_missing:loans" reads the same everywhere: *No figure for loans is
+reported in those years.* The raw forms remain available from the API for anyone auditing it
+(`/quality` is served verbatim; `/checks` is the same report in words).
+
+Every figure is clickable and opens *Where this number comes from*: how it is calculated (in words),
+the assumptions and earlier estimates it rests on, and each reported figure used, with the form,
+filing date, XBRL tag and a link to the filing on EDGAR. The API computes
 nothing: `GET /api/companies/<id>/analytics` returns exactly the rows in
 `historical_analytics.parquet`, which is what makes the dashboard checkable against the files an
 analyst would open directly. A stage that has not been run returns HTTP 409 naming the command to
@@ -184,6 +198,61 @@ The dashboard is built against WCAG 2.1 AA and verified with axe-core in CI-styl
 
 The server has **no authentication** and binds to localhost. It is local analyst tooling; do not
 expose it.
+
+### Hosted app: analyse any SEC filer on demand
+
+```bash
+SEC_USER_AGENT="Your Name you@example.com" research-engine app --data app-data
+```
+
+A public version of the dashboard with a search box. Type a company name or ticker; the app looks
+it up in the SEC's own company index, writes a config for it, downloads its filings and runs
+`ingest → quality → analyze → forecast` in the background, showing each stage as it completes.
+A company already analysed opens at once; results are reused for a week.
+
+It is a different deployment from `serve`, with different rules because it is public:
+
+- **Configs come only from the SEC index, looked up by CIK.** A visitor picks a company; they never
+  supply a URL, a path or a ticker the SEC does not know.
+- **Every write stays under `--data`**, and every JSON response is scrubbed of local fields and of
+  that directory's path, so there is nothing local to expose.
+- **One pipeline at a time, a capped queue, and six new analyses per visitor per hour.** Reusing a
+  finished company is never limited.
+- **Coverage is what the SEC has as XBRL.** Funds, trusts and most foreign issuers have no tagged
+  statements; the app says so instead of showing an empty dashboard. Uploading documents such as
+  annual reports is not supported yet — that is the next phase, and the same missing extraction is
+  why CET1, net interest margin and tangible equity are absent for banks.
+
+`render.yaml` deploys it to Render's free plan (Blueprint → this repository; set `SEC_USER_AGENT`).
+The free plan sleeps after 15 minutes idle and has no disk, so after waking it re-analyses its
+showcase company first — the page shows the progress — and earlier results are recomputed when next
+requested. Peak memory analysing a large bank's full history was about 265 MB, within the free
+plan's 512 MB.
+
+### Publishing
+
+The public dashboard is static files on GitHub Pages; there is no server to secure.
+`.github/workflows/pages.yml` rebuilds it weekly, on demand, and on every push to `main`: it takes
+every configured company through `ingest → quality → analyze → forecast` on a clean runner, then
+freezes the dashboard with `research-engine export-static`. Nothing is deployed unless the tests
+pass, `quality --strict` finds no errors, every source downloads, and the export's leak check
+passes — a failed run leaves the previous site up.
+
+The export asks the API every question the dashboard can ask, in-process, and writes each answer
+where the page will look for it, so the published figures are the API's own output rather than a
+second implementation. Fields carrying local paths are dropped, and the export refuses to write
+anything if a local path or e-mail address survives in any answer.
+
+One-time setup:
+
+```bash
+gh secret set SEC_USER_AGENT                                    # "Your Name you@example.com"
+gh api -X PUT repos/<owner>/<repo>/pages -f build_type=workflow # Pages source: GitHub Actions
+```
+
+To preview locally: `research-engine export-static --out site` then
+`python -m http.server 8080 --directory site`. GitHub pauses scheduled workflows in repositories
+with no activity for 60 days; re-enable it from the Actions tab if that happens.
 
 Add a company: create `companies/<exchange>-<ticker>/config.yaml`. No code changes.
 

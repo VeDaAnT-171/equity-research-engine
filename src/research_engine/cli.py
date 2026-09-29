@@ -178,6 +178,51 @@ def _cmd_forecast(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_export_static(args: argparse.Namespace) -> int:
+    try:
+        from .api.app import _require_fastapi
+        _require_fastapi()
+        from .api.export import export_static
+        companies = args.companies.resolve()
+        if not companies.is_dir():
+            raise ResearchEngineError(f"{companies} is not a directory")
+        result = export_static(companies, args.out)
+    except ResearchEngineError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"static snapshot -> {result['out']}")
+    print(f"  companies: {', '.join(result['companies']) or 'none'}")
+    print(f"  files:     {result['files']} ({result['bytes'] / 1e6:.1f} MB), "
+          f"{result['lineage_traces']} lineage traces")
+    print(f"  frozen:    {result['generated_at']} (engine {result['engine_version']})")
+    print("  checked:   no local paths or e-mail addresses in the published data")
+    if result["skipped"]:
+        print(f"  skipped:   {len(result['skipped'])} request(s) the API could not answer")
+    return 0
+
+
+def _cmd_app(args: argparse.Namespace) -> int:
+    """The public, hosted app: search any SEC filer and analyse it on demand."""
+    try:
+        from .api.app import _require_fastapi
+        _require_fastapi()
+        import uvicorn
+
+        from .hosted.app import create_hosted_app
+        ua = require_contact_user_agent(os.environ.get("SEC_USER_AGENT"))
+        app = create_hosted_app(args.data, args.frameworks, lambda: HttpFetcher(ua),
+                                seed_dir=args.seed if args.seed and args.seed.is_dir() else None)
+    except ResearchEngineError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"hosted app on http://{args.host}:{args.port}")
+    print(f"  data:      {Path(args.data).resolve()} (every write goes here)")
+    print("  public:    company search and on-demand analysis; local paths are stripped from responses")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info", proxy_headers=True,
+                forwarded_allow_ips="*")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     from .api import serve
     from .api.app import is_loopback
@@ -266,6 +311,25 @@ def main(argv: list[str] | None = None) -> int:
                          help="permit a non-loopback --host. The server has no authentication: only "
                               "use this behind your own auth and TLS")
     p_serve.set_defaults(func=_cmd_serve)
+
+    p_app = sub.add_parser("app", help="public hosted app: search any SEC filer and analyse it on demand")
+    p_app.add_argument("--data", type=Path, default=Path(os.environ.get("RESEARCH_ENGINE_DATA", "app-data")),
+                       help="directory for every file the app writes (default: app-data)")
+    p_app.add_argument("--frameworks", type=Path, default=_default_frameworks())
+    p_app.add_argument("--seed", type=Path, default=Path("companies"),
+                       help="companies analysed at start-up and kept even if a run fails (default: companies)")
+    p_app.add_argument("--host", default="0.0.0.0",
+                       help="default 0.0.0.0: this mode is built to be public (see README: Hosted app)")
+    p_app.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")))
+    p_app.set_defaults(func=_cmd_app)
+
+    p_export = sub.add_parser("export-static",
+                              help="freeze the dashboard into static files for hosting without a server")
+    p_export.add_argument("--companies", type=Path, default=Path("companies"),
+                          help="directory containing <company>/config.yaml (default: companies)")
+    p_export.add_argument("--out", type=Path, default=Path("site"),
+                          help="output directory, replaced on success (default: site)")
+    p_export.set_defaults(func=_cmd_export_static)
 
     p_research = sub.add_parser("research", help="run the full pipeline (not yet implemented)")
     p_research.add_argument("--config", required=True, type=Path)

@@ -71,6 +71,7 @@ class DriverGraph:
     unresolved: dict[str, str] = field(default_factory=dict)
     demoted: dict[str, str] = field(default_factory=dict)
     fallbacks: dict[str, str] = field(default_factory=dict)  # metric -> why its driver was not used
+    fallback_inputs: dict[str, tuple[str, ...]] = field(default_factory=dict)  # metric -> missing inputs
 
     def rule(self, metric_id: str) -> ProjectionRule:
         return self.rules[metric_id]
@@ -131,6 +132,7 @@ def build_driver_graph(framework: IndustryFramework, *, extra_targets: tuple[str
     analytic_ids = framework.analytic_ids
 
     fallen_back: dict[str, tuple[str, str]] = {}  # metric -> (driver id, reason)
+    missing_inputs: dict[str, tuple[str, ...]] = {}
     formula_by_metric: dict[str, tuple[str, str]] = {}
     consumed_by_formula: set[str] = set()
     for d in framework.drivers:
@@ -144,6 +146,7 @@ def build_driver_graph(framework: IndustryFramework, *, extra_targets: tuple[str
                       "its own history instead")
             for target in d.affects:
                 fallen_back[target] = (d.id, reason)
+                missing_inputs[target] = tuple(missing)
             continue
         consumed_by_formula |= set(needs)
         for target in d.affects:
@@ -242,4 +245,5 @@ def build_driver_graph(framework: IndustryFramework, *, extra_targets: tuple[str
     fallbacks = {m: fallen_back[m][1] for m in rules if m in fallen_back}
     return DriverGraph(rules=rules, order=order, targets=tuple(known_targets),
                        assumption_keys=tuple(keys), unresolved=unresolved, demoted=demoted,
-                       fallbacks=fallbacks)
+                       fallbacks=fallbacks,
+                       fallback_inputs={m: missing_inputs[m] for m in fallbacks})

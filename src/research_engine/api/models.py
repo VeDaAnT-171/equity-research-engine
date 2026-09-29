@@ -84,8 +84,19 @@ class AnalyticPoint(Model):
     value_id: str = Field(description="Lineage id; trace it at /lineage/{node_id}")
 
 
+class Gap(Model):
+    """Something the engine declined to produce, in words: which item, why, and how often."""
+
+    key: str
+    item: str
+    label: str
+    reason: str
+    count: int
+
+
 class AnalyticSeries(Model):
     analytic_id: str
+    label: str | None = None
     category: str
     kind: str
     unit_kind: str
@@ -100,6 +111,7 @@ class Analytics(Model):
     series: list[AnalyticSeries]
     not_computed: dict[str, int] = Field(
         default={}, description="Analytic-years the engine declined to compute, by reason")
+    gaps: list[Gap] = []
 
 
 class Chart(Model):
@@ -146,6 +158,7 @@ class ForecastPoint(Model):
 
 class ForecastMetric(Model):
     metric_id: str
+    label: str | None = None
     unit_kind: str
     currency: str | None = None
     points: list[ForecastPoint]
@@ -180,6 +193,9 @@ class Forecast(Model):
     fallbacks: dict[str, str] = {}
     unresolved_targets: dict[str, str] = {}
     assumptions_file: str | None = None
+    refusals: list[Gap] = []
+    unseeded_list: list[dict[str, str]] = []
+    fallback_notes: list[dict[str, str]] = []
 
 
 class Assumption(Model):
@@ -193,6 +209,9 @@ class Assumption(Model):
     rationale: str | None = None
     source_document_id: str | None = None
     source_fact_ids: list[str] = []
+    label: str | None = None
+    basis_text: str | None = None
+    source_text: str | None = None
 
 
 class Assumptions(Model):
@@ -234,6 +253,32 @@ class Quality(Model):
     derivations: Any = None
 
 
+class CheckRow(Model):
+    id: str
+    label: str
+    description: str = ""
+    passed: int = 0
+    failed: int = 0
+    not_evaluable: int = 0
+
+
+class Finding(Model):
+    severity: str
+    severity_label: str
+    check: str
+    check_label: str
+    item: str = ""
+    period: str = ""
+    text: str
+    fact_ids: list[str] = []
+
+
+class Checks(Model):
+    counts: dict[str, int] = {}
+    checks: list[CheckRow] = []
+    issues: list[Finding] = []
+
+
 # ---- lineage --------------------------------------------------------------------------------
 
 class LineageNode(Model):
@@ -264,3 +309,48 @@ class Health(Model):
     schema_version: str
     parser_version: str
     companies_root: str
+
+
+class FinancialValue(Model):
+    value: float
+    fact_id: str
+    derived: bool = False
+    form: str | None = None
+    filed: str | None = None
+
+
+class FinancialRow(Model):
+    metric_id: str
+    label: str
+    unit_kind: str | None = None
+    values: dict[str, FinancialValue]
+
+
+class Statement(Model):
+    id: str
+    label: str
+    rows: list[FinancialRow]
+
+
+class Financials(Model):
+    """Full-year figures by statement, keyed by fiscal year; every value cites its fact."""
+
+    fiscal_years: list[int]
+    currency: str | None = None
+    statements: list[Statement]
+
+
+class Glossary(Model):
+    framework: str | None = None
+    sector: str | None = None
+    model_name: str | None = None
+    labels: dict[str, str] = {}
+    metric_order: list[str] = []
+    statements: dict[str, str] = {}
+    units: dict[str, str | None] = {}
+    analytic_order: list[str] = []
+    categories: dict[str, str] = {}
+    document_only: list[str] = []
+    statement_labels: dict[str, str] = {}
+    category_labels: dict[str, str] = {}
+    check_labels: dict[str, str] = {}

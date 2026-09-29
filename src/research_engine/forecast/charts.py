@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import FuncFormatter, MaxNLocator, PercentFormatter  # noqa: E402
 
 from ..analysis.charts import PALETTE, _currency_formatter  # noqa: E402
+from ..presentation import in_sentence  # noqa: E402
 from ..schemas.forecast import BASE_SCENARIO, ForecastValue  # noqa: E402
 from ..schemas.framework import IndustryFramework  # noqa: E402
 
@@ -121,7 +122,7 @@ def render_forecast_chart(metric_id: str, by_scenario: dict[str, list[ForecastVa
             ax.plot([x], [y], marker="o", markersize=4.5, color=colour, zorder=4,
                     markerfacecolor=colour if v.is_actual else "white")
         if ahead:
-            ax.annotate(f" {scenario}", (ahead[-1][0], ahead[-1][1]), color=colour, fontsize=8.5,
+            ax.annotate(f" {scenario.replace('_', ' ').capitalize()}", (ahead[-1][0], ahead[-1][1]), color=colour, fontsize=8.5,
                         va="center", ha="left", zorder=5)
 
     ax.axvline(base_year, color="#8a8f98", linewidth=0.9, linestyle=(0, (2, 3)), zorder=1)
@@ -140,19 +141,22 @@ def render_forecast_chart(metric_id: str, by_scenario: dict[str, list[ForecastVa
         formatter, unit_label = _currency_formatter(biggest, currency)
         ax.yaxis.set_major_formatter(formatter)
         ax.set_ylabel(unit_label, color="#5b6470")
+    elif max(abs(float(v.value)) for vs in ordered.values() for v in vs) >= 1e6:
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v / 1e6:,.0f}"))
+        ax.set_ylabel("millions", color="#5b6470")
     else:
         ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
 
     ax.set_title(f"{record.title}\n", loc="left")
     ax.text(0, 1.02, company_label, transform=ax.transAxes, color="#5b6470", fontsize=8.5)
     record.fallback_for = sorted({f for vs in ordered.values() for v in vs for f in v.fallback_for})
-    caption = ("MODEL OUTPUT. Solid to the last reported year, dashed after it; filled markers are "
-               f"reported, hollow are projected. research-engine {engine_version}.")
+    caption = ("Estimates, not company guidance. Solid to the last reported year, dashed after it;\n"
+               "filled markers are reported, hollow are estimated. Source: company filings with the SEC.")
     if record.fallback_for:
-        caption += (f"\n‡ Rests on {', '.join(record.fallback_for)} projected by its own trend: the "
-                    "framework's declared driver needs an input this company does not report.")
+        caption += (f"\n‡ Uses a trend estimate for {', '.join(in_sentence(_title(framework, m)) for m in record.fallback_for)}: "
+                    "an input the full model needs isn't disclosed.")
     fig.text(0.01, 0.01, caption, fontsize=7, color="#5b6470")
-    fig.tight_layout(rect=(0, 0.09 if record.fallback_for else 0.06, 1, 1))
+    fig.tight_layout(rect=(0, 0.12 if record.fallback_for else 0.09, 1, 1))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for ext in ("svg", "png"):

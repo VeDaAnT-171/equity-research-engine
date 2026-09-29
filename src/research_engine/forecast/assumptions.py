@@ -218,7 +218,7 @@ class AssumptionSet:
             self._by_key.setdefault(a.assumption_id, []).append(a)
         self.scenarios: dict[str, ScenarioSpec] = {
             BASE_SCENARIO: ScenarioSpec(id=BASE_SCENARIO, name="Base case",
-                                        description="Engine-seeded history and analyst assumptions, with no scenario overrides.")
+                                        description="Built from the company's recent history and any analyst assumptions, with no scenario adjustments.")
         }
         for s in scenarios:
             self.scenarios[s.id] = s

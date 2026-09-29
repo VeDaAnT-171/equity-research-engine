@@ -17,3 +17,7 @@ build/
 coverage.xml
 .ruff_cache/
 .mypy_cache/
+
+# static dashboard snapshot: built by .github/workflows/pages.yml, never committed
+site/
+site.incoming/

@@ -1,0 +1,23 @@
+# Render blueprint for the hosted app: type a company, the engine analyses it on demand.
+#
+# Deploy: Render dashboard -> New -> Blueprint -> pick this repository. Render will ask for
+# SEC_USER_AGENT (your name and contact e-mail; the SEC requires one on every request).
+#
+# The free plan has no persistent disk and sleeps after 15 minutes idle. On wake the data
+# directory is empty, so the showcase company is re-analysed at start-up (the page shows its
+# progress) and anything visitors analysed before is analysed again when next asked for. A paid
+# plan with a disk mounted at the data path keeps results across restarts.
+services:
+  - type: web
+    name: equity-research-engine
+    runtime: python
+    plan: free
+    buildCommand: pip install ".[api]"
+    startCommand: research-engine app --data /tmp/research-engine --frameworks industry_frameworks --seed companies
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: SEC_USER_AGENT
+        sync: false

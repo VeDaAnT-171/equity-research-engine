@@ -16,6 +16,7 @@ from ..errors import ConfigError, ExtractionError
 from ..extraction import current_facts
 from ..frameworks import FrameworkRegistry, framework_fingerprint
 from ..lineage import LineageGraph, LineageNode, NodeKind
+from ..presentation import glossary
 from ..registry import DocumentRegistry
 from ..schemas.analytics import AnalyticValue
 from ..schemas.company import ProjectConfig
@@ -179,6 +180,9 @@ def run_analysis_stage(config: ProjectConfig, *, workspace: Path, frameworks: Fr
         "charts": chart_dicts,
     }, indent=2, default=str))
     _atomic_write(out / "charts" / "index.json", json.dumps(chart_dicts, indent=2))
+    # Names and plain-language vocabulary for readers, written from the same framework as the
+    # figures so a label can never describe a different definition than the number beside it.
+    _atomic_write(out / "glossary.json", json.dumps(glossary(framework), indent=2))
     _atomic_write(out / "historical_analysis.md", render_markdown(
         company_id=config.company_id, framework=framework, fiscal_years=years, summaries=summaries,
         not_computed=dict(result.not_computed), charts=chart_dicts, currencies=currencies, versions=versions))

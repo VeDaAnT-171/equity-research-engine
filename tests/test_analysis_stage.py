@@ -117,7 +117,8 @@ def test_a_series_that_stops_early_is_recorded_not_silently_cropped(tmp_path, fr
                      not_computed={"revenue:input_missing:loans": 4})
     assert r.years == [2020, 2021, 2022, 2023, 2024, 2025], "the axis must show the years it lacks"
     assert r.truncated == {"revenue": 2022}
-    assert any("no value after FY2022" in n and "input_missing:loans" in n for n in r.notes)
+    assert any("no value after FY2022" in n and "No figure for loans is reported" in n for n in r.notes)
+    assert not any("input_missing" in n for n in r.notes)
     assert "Incomplete over the period shown" in (tmp_path / "t" / "revenue.svg").read_text()
 
 
@@ -157,5 +158,5 @@ def test_a_gap_inside_a_series_is_named_in_the_chart_notes(tmp_path, frameworks_
     r = render_chart(spec, framework, facts, {}, set(), tmp_path / "t", company_label="Test",
                      engine_version="x", coverage_years=range(2020, 2026))
     assert r.years == [2020, 2021, 2022, 2023, 2024, 2025]
-    assert any("no value for FY2022, FY2023" in n for n in r.notes)
+    assert any("no value for FY2022–FY2023" in n for n in r.notes)
     assert not r.truncated, "a gap is not a truncation: the series runs to the end of the span"

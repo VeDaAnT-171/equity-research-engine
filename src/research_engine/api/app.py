@@ -96,6 +96,16 @@ def create_app(companies_root: Path):
     def overview(company_id: str):
         return guarded(repo.overview_of, company(company_id))
 
+    @app.get("/api/companies/{company_id}/glossary", tags=["companies"], response_model=m.Glossary,
+             summary="Display names and vocabulary for this company's figures")
+    def glossary(company_id: str):
+        return guarded(repo.glossary_of, company(company_id))
+
+    @app.get("/api/companies/{company_id}/financials", tags=["analysis"], response_model=m.Financials,
+             summary="Full-year financial statements, each value citing its fact")
+    def financials(company_id: str):
+        return guarded(repo.financials_of, company(company_id))
+
     @app.get("/api/companies/{company_id}/documents", tags=["companies"],
              response_model=list[m.Document])
     def documents(company_id: str):
@@ -110,6 +120,11 @@ def create_app(companies_root: Path):
     @app.get("/api/companies/{company_id}/quality", tags=["analysis"], response_model=m.Quality)
     def quality(company_id: str):
         return guarded(repo.quality_of, company(company_id))
+
+    @app.get("/api/companies/{company_id}/checks", tags=["analysis"], response_model=m.Checks,
+             summary="Data checks and their findings, in plain language")
+    def checks(company_id: str):
+        return guarded(repo.checks_of, company(company_id))
 
     @app.get("/api/companies/{company_id}/coverage", tags=["analysis"])
     def coverage(company_id: str) -> dict:

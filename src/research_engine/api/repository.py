@@ -10,6 +10,7 @@ quality stage never ran would be worse than one showing nothing at all.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -253,6 +254,56 @@ def documents_of(ws: CompanyWorkspace) -> list[dict[str, Any]]:
     return manifest.get("documents") or []
 
 
+def glossary_of(ws: CompanyWorkspace) -> dict[str, Any]:
+    """Names and vocabulary written by `analyze`. Absent for older runs: readers then see ids."""
+    path = ws.output / "glossary.json"
+    if not path.is_file():
+        return {"labels": {}, "metric_order": [], "statements": {}, "units": {}, "analytic_order": [],
+                "categories": {}, "document_only": [], "statement_labels": {}, "category_labels": {},
+                "check_labels": {}, "sector": None, "framework": None}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _names(ws: CompanyWorkspace) -> tuple[dict[str, str], frozenset[str]]:
+    g = glossary_of(ws)
+    return g.get("labels") or {}, frozenset(g.get("document_only") or ())
+
+
+def financials_of(ws: CompanyWorkspace) -> dict[str, Any]:
+    """Full-year figures by statement, as reported (or derived, and marked so) — no new numbers."""
+    from ..presentation import STATEMENT_LABEL
+    g = glossary_of(ws)
+    labels = g.get("labels") or {}
+    order = {m: i for i, m in enumerate(g.get("metric_order") or [])}
+    statements = g.get("statements") or {}
+    units = g.get("units") or {}
+    rows: dict[str, dict[str, Any]] = {}
+    years: set[int] = set()
+    currency = None
+    for fact in ws.parquet("historical_financials.parquet", "analyze"):
+        if fact["fiscal_period"] != "FY":
+            continue
+        metric = fact["metric_id"]
+        row = rows.setdefault(metric, {"metric_id": metric, "label": labels.get(metric, metric),
+                                       "unit_kind": units.get(metric), "values": {}})
+        years.add(fact["fiscal_year"])
+        currency = currency or fact["currency"]
+        row["values"][str(fact["fiscal_year"])] = {
+            "value": fact["value"], "fact_id": fact["fact_id"],
+            "derived": fact["provenance"] == "derived",
+            "form": fact["filing_form"], "filed": str(fact["filed_date"]) if fact["filed_date"] else None,
+        }
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for metric, row in sorted(rows.items(), key=lambda kv: (order.get(kv[0], 10_000), kv[0])):
+        grouped.setdefault(statements.get(metric, "operating"), []).append(row)
+    sequence = ["income_statement", "balance_sheet", "cash_flow", "operating", "regulatory"]
+    return {
+        "fiscal_years": sorted(years), "currency": currency,
+        "statements": [{"id": s, "label": STATEMENT_LABEL.get(s, s), "rows": grouped[s]}
+                       for s in sequence if s in grouped],
+    }
+
+
 def analytics_of(ws: CompanyWorkspace) -> dict[str, Any]:
     rows = ws.parquet("historical_analytics.parquet", "analyze")
     summary = ws.json("historical_summary.json", "analyze")
@@ -270,11 +321,18 @@ def analytics_of(ws: CompanyWorkspace) -> dict[str, Any]:
     for entry in series.values():
         entry["points"].sort(key=lambda p: p["fiscal_year"])
         entry["summary"] = summary.get("summaries", {}).get(entry["analytic_id"])
+    from ..presentation import gaps
+    names, document_only = _names(ws)
+    order = {a: i for i, a in enumerate(glossary_of(ws).get("analytic_order") or [])}
+    for entry in series.values():
+        entry["label"] = names.get(entry["analytic_id"], entry["analytic_id"])
     return {
         "fiscal_years": summary.get("fiscal_years", []),
         "classification": summary.get("classification"),
-        "series": sorted(series.values(), key=lambda e: (e["category"], e["analytic_id"])),
+        "series": sorted(series.values(), key=lambda e: (e["category"], order.get(e["analytic_id"], 10_000),
+                                                         e["analytic_id"])),
         "not_computed": summary.get("not_computed", {}),
+        "gaps": gaps(summary.get("not_computed", {}), names, document_only),
     }
 
 
@@ -316,6 +374,34 @@ def forecast_of(ws: CompanyWorkspace) -> dict[str, Any]:
         "fallbacks": doc.get("fallbacks", {}),
         "unresolved_targets": doc.get("unresolved_targets", {}),
         "assumptions_file": manifest.get("assumptions_file"),
+        **_forecast_words(ws, doc, by_scenario),
+    }
+
+
+def _join(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _forecast_words(ws: CompanyWorkspace, doc: dict, by_scenario: dict) -> dict[str, Any]:
+    """Labels and plain-language explanations for the forecast view."""
+    from ..presentation import gaps, in_sentence, unseeded_text
+    names, document_only = _names(ws)
+    for scenario in by_scenario.values():
+        for metric in scenario.values():
+            metric["label"] = names.get(metric["metric_id"], metric["metric_id"])
+    fallback_notes = []
+    for metric, missing in (doc.get("fallback_inputs") or {}).items():
+        inputs = [in_sentence(names.get(m, m)) for m in missing]
+        where = ("aren't" if len(inputs) > 1 else "isn't") + (
+            " disclosed in the SEC's structured financial data" if set(missing) & document_only else " reported")
+        fallback_notes.append({"metric_id": metric, "label": names.get(metric, metric),
+                               "text": f"{names.get(metric, metric)} is estimated from its own recent trend "
+                                       f"because {_join(inputs)} {where}."})
+    return {
+        "refusals": gaps(doc.get("not_projected", {}), names, document_only),
+        "unseeded_list": [{"key": k, "label": names.get(k, k), "text": unseeded_text(k, names, document_only)}
+                          for k in sorted(doc.get("unseeded", {}))],
+        "fallback_notes": fallback_notes,
     }
 
 
@@ -327,9 +413,23 @@ def plan_order(plan: dict[str, dict], metric_id: str) -> tuple[int, str]:
 
 def assumptions_of(ws: CompanyWorkspace) -> dict[str, Any]:
     doc = ws.json("assumptions.json", "forecast")
+    names, _ = _names(ws)
+    source_text = {"historical": "Company history", "analyst_assumption": "Analyst",
+                   "management_guidance": "Management guidance", "consensus": "Consensus",
+                   "scenario": "Scenario", "derived": "Derived"}
+    assumptions = []
+    for a in doc.get("assumptions", []):
+        span = re.search(r"over (FY\d{4})(?:-(FY\d{4}))?", a.get("description") or "")
+        if a.get("type") == "historical" and span:
+            first, last = span.group(1), span.group(2)
+            basis = f"Median, {first}–{last}" if last and last != first else f"{first} only"
+        else:
+            basis = a.get("rationale") or a.get("description") or ""
+        assumptions.append({**a, "label": names.get(a["assumption_id"], a["assumption_id"]),
+                            "basis_text": basis, "source_text": source_text.get(a.get("type"), a.get("type"))})
     return {
         "resolution_order": doc.get("resolution_order", []),
-        "assumptions": doc.get("assumptions", []),
+        "assumptions": assumptions,
         "scenarios": doc.get("scenarios", []),
         "unseeded": doc.get("unseeded", {}),
         "base_year": doc.get("base_year"),
@@ -339,6 +439,14 @@ def assumptions_of(ws: CompanyWorkspace) -> dict[str, Any]:
 
 def quality_of(ws: CompanyWorkspace) -> dict[str, Any]:
     return ws.json("data_quality_report.json", "quality")
+
+
+def checks_of(ws: CompanyWorkspace) -> dict[str, Any]:
+    """The data-quality report in words; `quality_of` stays verbatim for anyone auditing it."""
+    from ..presentation import checks_view
+    names, _ = _names(ws)
+    units = glossary_of(ws).get("units") or {}
+    return checks_view(quality_of(ws), names, ws.config.company.reporting_currency, units)
 
 
 def chart_data(ws: CompanyWorkspace, chart_id: str) -> dict[str, Any]:

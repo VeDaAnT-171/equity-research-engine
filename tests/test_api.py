@@ -195,7 +195,7 @@ def test_markdown_reports_are_served(client):
 
 
 def test_dashboard_shell_and_assets_load(client):
-    assert "Equity Research Engine" in client.get("/").text
+    assert "Equity Research" in client.get("/").text
     for asset in ("/static/app.js", "/static/styles.css"):
         assert client.get(asset).status_code == 200
 
@@ -327,3 +327,47 @@ def test_a_skipped_chart_is_not_served_even_if_an_old_image_survives(client, wor
     skipped = next(c["chart_id"] for c in index if c.get("skipped"))
     (out / f"{skipped}.svg").write_text("<svg>stale</svg>")
     assert client.get(f"/api/companies/nyse-exbk/forecast/charts/{skipped}.svg").status_code == 404
+
+
+# ---- reader-facing vocabulary ------------------------------------------------------------------
+
+def test_glossary_names_every_metric_and_analytic_the_company_has(client):
+    g = client.get("/api/companies/nyse-exbk/glossary").json()
+    assert g["sector"] == "Bank"
+    analytics = client.get("/api/companies/nyse-exbk/analytics").json()
+    for series in analytics["series"]:
+        assert series["analytic_id"] in g["labels"]
+        assert series["label"] == g["labels"][series["analytic_id"]]
+
+
+def test_financials_are_the_reported_full_year_figures_with_their_facts(client, workspace):
+    import pyarrow.parquet as pq
+    body = client.get("/api/companies/nyse-exbk/financials").json()
+    assert body["statements"] and body["fiscal_years"] == sorted(body["fiscal_years"])
+    on_disk = {r["fact_id"]: r for r in pq.read_table(
+        workspace / "nyse-exbk" / "output" / "historical_financials.parquet").to_pylist()}
+    for statement in body["statements"]:
+        assert statement["label"] and not statement["label"].islower()
+        for row in statement["rows"]:
+            for year, cell in row["values"].items():
+                fact = on_disk[cell["fact_id"]]
+                assert fact["fiscal_period"] == "FY" and str(fact["fiscal_year"]) == year
+                assert cell["value"] == fact["value"]
+
+
+def test_refusals_are_explained_in_words_not_codes(client):
+    import re
+    analytics = client.get("/api/companies/nyse-exbk/analytics").json()
+    forecast = client.get("/api/companies/nyse-exbk/forecast").json()
+    rows = analytics["gaps"] + forecast["refusals"]
+    assert rows
+    for row in rows:
+        assert not re.search(r"\w+_\w+|:", row["reason"]), row["reason"]
+        assert not re.search(r"\w+_\w+", row["label"]), row["label"]
+
+
+def test_assumptions_carry_a_readable_label_and_basis(client):
+    body = client.get("/api/companies/nyse-exbk/assumptions").json()
+    for a in body["assumptions"]:
+        assert a["label"] and "." not in a["label"] and "_" not in a["label"]
+        assert a["source_text"]

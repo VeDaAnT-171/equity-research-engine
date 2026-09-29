@@ -1,0 +1,94 @@
+# Rebuilds the dashboard from the latest SEC filings and publishes it to GitHub Pages.
+#
+# Runs weekly, on demand, and whenever main changes. Each run takes every configured company
+# through the whole pipeline on a clean runner — nothing is carried over from the last run — then
+# freezes the dashboard into static files and deploys them. Pages still only serves files; "live"
+# here means the files are regenerated from source on a schedule, not that a server is running.
+#
+# Nothing is published unless every gate passes. A run that fails leaves the previous site up:
+#   - the test suite, so a code regression never reaches the public page;
+#   - `quality --strict`, which exits non-zero on any data-quality *error* (warnings are published,
+#     and shown on the page, because they are findings rather than failures);
+#   - `ingest` exits non-zero if any source could not be retrieved, so a failed download never
+#     publishes a half-empty dashboard;
+#   - `export-static` refuses to write if a local path or e-mail address would be published.
+#
+# One-time setup:
+#   gh secret set SEC_USER_AGENT          (a name and contact e-mail; SEC fair-access policy)
+#   gh api -X PUT repos/<owner>/<repo>/pages -f build_type=workflow
+name: Pages
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"   # Mondays 06:17 UTC; SEC filings change quarterly, so weekly is ample
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false  # never abandon a deploy half way; the next run queues behind it
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: SEC contact is configured
+        run: |
+          if [ -z "$SEC_USER_AGENT" ]; then
+            echo "::error::Repository secret SEC_USER_AGENT is not set. Run: gh secret set SEC_USER_AGENT"
+            exit 1
+          fi
+
+      - name: Install
+        run: python -m pip install -e ".[dev,api]"
+
+      - name: Tests
+        run: pytest -q
+
+      - name: Run the pipeline for every company
+        run: |
+          shopt -s nullglob
+          configs=(companies/*/config.yaml)
+          if [ ${#configs[@]} -eq 0 ]; then echo "::error::no companies/*/config.yaml"; exit 1; fi
+          for cfg in "${configs[@]}"; do
+            echo "::group::$cfg"
+            research-engine ingest   --config "$cfg" --frameworks industry_frameworks
+            research-engine quality  --config "$cfg" --frameworks industry_frameworks --strict
+            research-engine analyze  --config "$cfg" --frameworks industry_frameworks
+            research-engine forecast --config "$cfg" --frameworks industry_frameworks
+            echo "::endgroup::"
+          done
+
+      - name: Freeze the dashboard
+        run: research-engine export-static --companies companies --out site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

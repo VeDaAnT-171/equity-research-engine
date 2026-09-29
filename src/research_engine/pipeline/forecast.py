@@ -212,6 +212,7 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
         "unresolved_targets": dict(sorted(result.graph.unresolved.items())),
         "demoted_derivations": dict(sorted(result.graph.demoted.items())),
         "fallbacks": dict(sorted(result.graph.fallbacks.items())),
+        "fallback_inputs": {m: list(v) for m, v in sorted(result.graph.fallback_inputs.items())},
     }, indent=2, default=str))
 
     _atomic_write(out / "forecast_charts" / "index.json",

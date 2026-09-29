@@ -3,52 +3,67 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Equity Research Engine</title>
-<meta name="description" content="Read-only dashboard over equity research pipeline outputs. Every figure traces to a filing.">
+<title>Equity Research</title>
+<meta name="description" content="Company financials, ratios and estimates built from SEC filings. Every figure links to the filing it came from.">
 <link rel="stylesheet" href="/static/styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#128200;</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230b2545'/><path d='M7 22l6-7 5 4 7-9' stroke='%2334d1bf' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 </head>
 <body>
 
 <a class="skip" href="#main">Skip to content</a>
 
-<header class="topbar">
-  <div class="brand">
-    <span class="mark" aria-hidden="true"></span>
-    <div>
-      <h1 class="title">Equity Research Engine</h1>
-      <p class="sub" id="engine-version">&nbsp;</p>
-    </div>
-  </div>
+<header class="appbar">
+  <div class="appbar-inner">
+    <a class="brand" href="#" aria-label="Equity Research, home">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M7 22l6-7 5 4 7-9"/></svg>
+      <span class="brand-name">Equity Research</span>
+    </a>
 
-  <div class="picker">
-    <label class="field">
-      <span class="field-label">Company</span>
-      <select id="company" aria-describedby="stage-summary"></select>
+    <form class="search" id="finder-form" role="search" autocomplete="off" hidden>
+      <label class="sr-only" for="finder-q">Search companies</label>
+      <svg class="search-icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4"/></svg>
+      <input id="finder-q" name="q" type="search" required maxlength="80"
+             placeholder="Search a company or ticker" aria-describedby="finder-hint">
+      <button type="submit" class="btn">Search</button>
+    </form>
+
+    <label class="switcher" id="switcher" hidden>
+      <span class="sr-only">Company</span>
+      <select id="company"></select>
     </label>
-    <div class="stages">
-      <p class="field-label" id="stages-label">Pipeline</p>
-      <ul class="stage-list" id="stages" aria-labelledby="stages-label"></ul>
-      <p class="sr-only" id="stage-summary"></p>
-    </div>
+  </div>
+  <div class="finder-panel" id="finder" hidden>
+    <p class="finder-hint" id="finder-hint">Covers companies that file financial statements with the U.S. SEC.
+      A company not yet in the library takes about a minute to prepare.</p>
+    <div id="finder-results"></div>
+    <div id="finder-run"></div>
   </div>
 </header>
 
-<nav aria-label="Views">
-  <div class="tabs" id="tabs" role="tablist" aria-label="Dashboard views">
-    <button role="tab" class="tab" id="tab-overview"    data-view="overview"    aria-selected="true"  aria-controls="panel" tabindex="0">Overview</button>
-    <button role="tab" class="tab" id="tab-historical"  data-view="historical"  aria-selected="false" aria-controls="panel" tabindex="-1">Historical</button>
-    <button role="tab" class="tab" id="tab-forecast"    data-view="forecast"    aria-selected="false" aria-controls="panel" tabindex="-1">Forecast</button>
-    <button role="tab" class="tab" id="tab-assumptions" data-view="assumptions" aria-selected="false" aria-controls="panel" tabindex="-1">Assumptions</button>
-    <button role="tab" class="tab" id="tab-quality"     data-view="quality"     aria-selected="false" aria-controls="panel" tabindex="-1">Data quality</button>
+<section class="company-band" id="company-band" aria-label="Company" hidden></section>
+
+<nav class="tabbar" aria-label="Sections">
+  <div class="tabs" id="tabs" role="tablist" aria-label="Company sections">
+    <button role="tab" class="tab" id="tab-summary"    data-view="summary"    aria-selected="true"  aria-controls="panel" tabindex="0">Summary</button>
+    <button role="tab" class="tab" id="tab-financials" data-view="financials" aria-selected="false" aria-controls="panel" tabindex="-1">Financials</button>
+    <button role="tab" class="tab" id="tab-ratios"     data-view="ratios"     aria-selected="false" aria-controls="panel" tabindex="-1">Ratios</button>
+    <button role="tab" class="tab" id="tab-forecast"   data-view="forecast"   aria-selected="false" aria-controls="panel" tabindex="-1">Estimates</button>
+    <button role="tab" class="tab" id="tab-checks"     data-view="checks"     aria-selected="false" aria-controls="panel" tabindex="-1">Data checks</button>
   </div>
 </nav>
 
-<main id="main">
-  <div id="panel" role="tabpanel" aria-labelledby="tab-overview" tabindex="-1" aria-busy="true">
-    <p class="empty">Loading workspace…</p>
+<main id="main" tabindex="-1">
+  <div id="panel" role="tabpanel" aria-labelledby="tab-summary" tabindex="-1" aria-busy="true">
+    <p class="empty">Loading…</p>
   </div>
 </main>
+
+<footer class="footer">
+  <p><strong>Source:</strong> company filings with the U.S. Securities and Exchange Commission (EDGAR).
+    Select any figure to see the filing it came from.</p>
+  <p>Estimates are projections from each company's reported history, not company guidance or
+    consensus. For information only; not investment advice.</p>
+</footer>
 
 <p class="sr-only" id="live" role="status" aria-live="polite"></p>
 
@@ -56,11 +71,11 @@
   <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
     <div class="drawer-head">
       <div>
-        <p class="drawer-eyebrow">Lineage</p>
+        <p class="drawer-eyebrow">Where this number comes from</p>
         <h2 id="drawer-title">&nbsp;</h2>
       </div>
       <button class="icon-btn" id="drawer-close" type="button">
-        <span aria-hidden="true">&times;</span><span class="sr-only">Close lineage</span>
+        <span aria-hidden="true">&times;</span><span class="sr-only">Close</span>
       </button>
     </div>
     <div class="drawer-body" id="drawer-body"></div>
