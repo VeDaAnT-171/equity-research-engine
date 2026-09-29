@@ -21,3 +21,6 @@ coverage.xml
 # static dashboard snapshot: built by .github/workflows/pages.yml, never committed
 site/
 site.incoming/
+
+# hosted app data directory (research-engine app --data app-data)
+app-data/
