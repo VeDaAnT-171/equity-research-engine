@@ -105,8 +105,8 @@ def run_analysis_stage(config: ProjectConfig, *, workspace: Path, frameworks: Fr
     out = workspace / "output"
     manifest_path = _require(out / "manifest.json", "run `ingest` first")
     quality_manifest_path = _require(out / "quality_manifest.json", "run `quality` first")
-    manifest = json.loads(manifest_path.read_text())
-    quality_manifest = json.loads(quality_manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    quality_manifest = json.loads(quality_manifest_path.read_text(encoding="utf-8"))
     if manifest.get("config_sha256") != hashlib.sha256(config.model_dump_json().encode()).hexdigest():
         raise ConfigError("the company config changed since the last ingestion; re-run `ingest`, `quality`, `analyze`")
     framework = frameworks.get(manifest["framework"]["name"])
@@ -119,7 +119,7 @@ def run_analysis_stage(config: ProjectConfig, *, workspace: Path, frameworks: Fr
 
     reported = _load_facts(out / "facts.jsonl")
     derived = _load_facts(_require(out / "facts_derived.jsonl", "run `quality` first"))
-    quality_report = json.loads(_require(out / "data_quality_report.json", "run `quality` first").read_text())
+    quality_report = json.loads(_require(out / "data_quality_report.json", "run `quality` first").read_text(encoding="utf-8"))
     current = current_facts([f for f in reported if f.provenance is Provenance.REPORTED]) + derived
 
     result = run_analytics(framework, current, company_id=config.company_id, quality_report=quality_report)

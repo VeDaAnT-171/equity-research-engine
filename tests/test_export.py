@@ -27,7 +27,7 @@ def workspace(tmp_path, sec_bank_config_path, frameworks_dir):
     root = tmp_path / "companies"
     company = root / "nyse-exbk"
     company.mkdir(parents=True)
-    (company / "config.yaml").write_text(sec_bank_config_path.read_text(), encoding="utf-8")
+    (company / "config.yaml").write_text(sec_bank_config_path.read_text(encoding="utf-8"), encoding="utf-8")
     config = load_project_config(company / "config.yaml")
     run_ingestion(config, workspace=company, frameworks=frameworks, fetcher=FakeFetcher())
     run_quality_stage(config, workspace=company, frameworks=frameworks)
@@ -40,7 +40,7 @@ def test_the_snapshot_is_the_apis_own_answers(workspace, tmp_path):
     result = export_static(workspace, tmp_path / "site")
     site = tmp_path / "site"
     live = TestClient(create_app(workspace))
-    forecast = json.loads((site / "api/companies/nyse-exbk/forecast.json").read_text())
+    forecast = json.loads((site / "api/companies/nyse-exbk/forecast.json").read_text(encoding="utf-8"))
     assert forecast == live.get("/api/companies/nyse-exbk/forecast").json()
     assert result["lineage_traces"] > 0 and not result["skipped"]
     # every value the dashboard renders as a trace button has its lineage file
@@ -52,7 +52,7 @@ def test_the_snapshot_is_the_apis_own_answers(workspace, tmp_path):
 
 def test_the_page_says_it_is_a_snapshot_and_works_under_a_project_path(workspace, tmp_path):
     export_static(workspace, tmp_path / "site")
-    html = (tmp_path / "site/index.html").read_text()
+    html = (tmp_path / "site/index.html").read_text(encoding="utf-8")
     assert 'name="research-engine-snapshot"' in html
     # GitHub serves a project site under /<repo>/, where an absolute /static/ path would miss
     assert 'href="static/styles.css"' in html and 'src="static/app.js"' in html
@@ -61,10 +61,10 @@ def test_the_page_says_it_is_a_snapshot_and_works_under_a_project_path(workspace
 
 def test_local_fields_are_removed(workspace, tmp_path):
     export_static(workspace, tmp_path / "site")
-    health = json.loads((tmp_path / "site/api/health.json").read_text())
+    health = json.loads((tmp_path / "site/api/health.json").read_text(encoding="utf-8"))
     assert "companies_root" not in health
     for path in (tmp_path / "site").rglob("*.json"):
-        assert str(workspace) not in path.read_text()
+        assert str(workspace) not in path.read_text(encoding="utf-8")
 
 
 def test_the_export_refuses_rather_than_publish_the_workspace_path(workspace, tmp_path, monkeypatch):
@@ -79,5 +79,5 @@ def test_the_export_refuses_rather_than_publish_the_workspace_path(workspace, tm
 def test_a_stage_not_run_is_exported_as_a_refusal_not_a_gap(workspace, tmp_path):
     (workspace / "nyse-exbk/output/forecast_manifest.json").unlink()
     export_static(workspace, tmp_path / "site")
-    body = json.loads((tmp_path / "site/api/companies/nyse-exbk/forecast.json").read_text())
+    body = json.loads((tmp_path / "site/api/companies/nyse-exbk/forecast.json").read_text(encoding="utf-8"))
     assert body["__status"] == 409 and body["detail"]["stage"] == "forecast"

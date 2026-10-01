@@ -97,18 +97,28 @@ metrics:
     statement: operating
     period_type: duration
     extraction_hint: Average balance sheet / net interest margin analysis table in the annual report.
+    document:
+      labels: ['average interest[- ]earning assets', 'total (average )?interest[- ]earning assets']
+      column: 'average ?balance'
   - id: tangible_common_equity
     name: Tangible common equity
     unit_kind: currency
     statement: balance_sheet
     period_type: instant
     extraction_hint: Non-GAAP reconciliation in earnings supplement; definitions vary by bank.
+    document:
+      labels: ['tangible common (stockholders.|shareholders.)?\s*equity']
   - id: cet1_ratio
     name: CET1 ratio
     unit_kind: ratio
     statement: regulatory
     period_type: instant
     extraction_hint: Regulatory capital section; state Standardized vs Advanced approach.
+    # The Standardized approach is the one U.S. banks are bound by and report first; the group
+    # figure (no legal-entity axis) is the one investors quote.
+    document:
+      concepts: ['CommonEquityTier(1|One)Capital(Ratio|ToRiskWeightedAssets|toRiskWeightedAssets)']
+      dimensions: {RiskWeightedAssetsCalculationMethodologyAxis: '.*Standardized.*', ConsolidatedEntitiesAxis: 'ParentCompanyMember'}
   - id: risk_weighted_assets
     name: Risk-weighted assets
     unit_kind: currency
@@ -116,6 +126,9 @@ metrics:
     period_type: instant
     expected_sign: non_negative
     extraction_hint: Regulatory capital section; same approach as CET1.
+    document:
+      concepts: ['RiskWeightedAssets']
+      dimensions: {RiskWeightedAssetsCalculationMethodologyAxis: '.*Standardized.*', ConsolidatedEntitiesAxis: 'ParentCompanyMember'}
   - id: net_interest_margin
     name: Net interest margin
     unit_kind: ratio

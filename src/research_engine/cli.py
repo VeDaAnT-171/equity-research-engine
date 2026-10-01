@@ -85,7 +85,9 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         fetcher = None
         if not args.offline:
             ua = os.environ.get("SEC_USER_AGENT")
-            if requires_sec_access(config):
+            workspace = args.workspace or args.config.resolve().parent
+            from .documents.library import DocumentLibrary
+            if requires_sec_access(config) or any(e.url for e in DocumentLibrary(workspace).entries()):
                 ua = require_contact_user_agent(ua)
             fetcher = HttpFetcher(ua or "research-engine")
         workspace = args.workspace or args.config.resolve().parent
@@ -108,9 +110,32 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         print(f"  facts:      {r.facts_emitted} from {r.observations_mapped}/{r.observations_total} mapped observations")
         print(f"  gaps:       {len(r.metrics_without_data)} tagged metrics without data, "
               f"{len(r.metrics_requiring_documents)} need document extraction")
+    for d in getattr(result, "documents", []):
+        used = ", ".join(f"{m} ({len(p)})" for m, p in d["contributed"].items()) or "nothing new"
+        print(f"  document:   {d['title']} — {d['status']}: {d['reason']} Added: {used}")
     for w in result.warnings:
         print(f"  warning:    {w}")
     return 3 if result.failures else 0
+
+
+def _cmd_add_document(args: argparse.Namespace) -> int:
+    from .documents.library import DocumentLibrary
+    try:
+        config = load_project_config(args.config)
+        workspace = args.workspace or args.config.resolve().parent
+        library = DocumentLibrary(workspace)
+        if args.url:
+            entry, new = library.add_sec_filing(args.url, kind=args.kind, title=args.title)
+        else:
+            entry, new = library.add_file(args.file.read_bytes(), original_name=args.file.name, kind=args.kind,
+                                          title=args.title)
+    except (ResearchEngineError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"{'added' if new else 'already in the library'}: {entry.title} [{entry.id}] for {config.company_id}")
+    print(f"  stored in {library.root}")
+    print("  run ingest, quality, analyze and forecast to use it; it is used only if it passes verification")
+    return 0
 
 
 def _cmd_quality(args: argparse.Namespace) -> int:
@@ -282,6 +307,17 @@ def main(argv: list[str] | None = None) -> int:
     p_ingest.add_argument("--offline", action="store_true", help="use cached documents only")
     p_ingest.add_argument("--env-file", type=Path, default=Path(".env"))
     p_ingest.set_defaults(func=_cmd_ingest)
+
+    p_add = sub.add_parser("add-document", help="add an annual report, supplement or presentation to a company's library")
+    p_add.add_argument("--config", required=True, type=Path)
+    where = p_add.add_mutually_exclusive_group(required=True)
+    where.add_argument("--file", type=Path, help="an HTML or PDF file")
+    where.add_argument("--url", help="an SEC EDGAR archive address (https://www.sec.gov/Archives/edgar/data/...)")
+    p_add.add_argument("--kind", default="annual_report",
+                       choices=["annual_report", "quarterly_report", "earnings_release", "investor_presentation", "other"])
+    p_add.add_argument("--title", default=None)
+    p_add.add_argument("--workspace", type=Path, default=None, help="defaults to the config file's directory")
+    p_add.set_defaults(func=_cmd_add_document)
 
     p_quality = sub.add_parser("quality", help="derive interim/framework metrics and run data-quality checks")
     p_quality.add_argument("--config", required=True, type=Path)

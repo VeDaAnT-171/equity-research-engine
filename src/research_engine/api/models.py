@@ -279,6 +279,39 @@ class Checks(Model):
     issues: list[Finding] = []
 
 
+class Contribution(Model):
+    metric_id: str
+    label: str
+    periods: list[str]
+
+
+class LibraryDocument(Model):
+    id: str
+    document_id: str | None = None
+    title: str
+    kind: str
+    kind_label: str
+    added_by: str
+    added_at: str | None = None
+    media_type: str | None = None
+    url: str | None = None
+    has_file: bool = False
+    bytes: int | None = None
+    form: str | None = None
+    filed: str | None = None
+    status: str = Field(description="verified | unverified | rejected | pending")
+    status_label: str
+    reason: str
+    checked: int = 0
+    agreed: int = 0
+    contributed: list[Contribution] = []
+
+
+class Library(Model):
+    structured_source: dict[str, Any] = {}
+    documents: list[LibraryDocument] = []
+
+
 # ---- lineage --------------------------------------------------------------------------------
 
 class LineageNode(Model):
@@ -317,6 +350,7 @@ class FinancialValue(Model):
     derived: bool = False
     form: str | None = None
     filed: str | None = None
+    document: str | None = Field(default=None, description="Title of the library document it was read from, if any")
 
 
 class FinancialRow(Model):

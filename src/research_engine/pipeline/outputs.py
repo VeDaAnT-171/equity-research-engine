@@ -65,6 +65,11 @@ def _wide(facts, codes) -> str:
     return _csv_text(["metric_id", "unit"] + labels, rows)
 
 
+def _public_source(d: DocumentRecord) -> str:
+    """A document's address, or for a local file just its name: outputs get published."""
+    return d.source_url or f"file:{Path(d.local_source_path or '').name}"
+
+
 def write_ingestion_outputs(result: IngestionResult, config: ProjectConfig, documents: list[DocumentRecord],
                             lineage: LineageGraph) -> None:
     out = result.output_dir
@@ -88,6 +93,7 @@ def write_ingestion_outputs(result: IngestionResult, config: ProjectConfig, docu
     _atomic_write(out / "extraction_report.json", json.dumps(report, indent=2, default=str))
     _atomic_write(out / "extraction_report.md", _report_md(result, report, annual))
     _atomic_write(out / "sources.md", _sources_md(documents))
+    _atomic_write(out / "documents.json", json.dumps({"documents": result.documents}, indent=2, default=str))
 
     config_hash = hashlib.sha256(config.model_dump_json().encode()).hexdigest()
     manifest = {
@@ -99,7 +105,7 @@ def write_ingestion_outputs(result: IngestionResult, config: ProjectConfig, docu
         "framework_sha256": result.framework_sha256,
         "fiscal_calendar": result.calendar.__dict__ if result.calendar else None,
         "documents": [{"document_id": d.document_id, "status": d.status.value, "file_hash": d.file_hash,
-                       "source": d.source_url or d.local_source_path} for d in documents],
+                       "source": _public_source(d)} for d in documents],
         "facts": len(result.facts),
         "facts_current": len(current),
         "warnings": result.warnings,
@@ -153,5 +159,5 @@ def _sources_md(documents: list[DocumentRecord]) -> str:
     for d in documents:
         lines.append(f"| {d.document_id} | {d.document_type.value} | {d.status.value} | "
                      f"{d.retrieval_timestamp.isoformat(timespec='seconds') if d.retrieval_timestamp else ''} | "
-                     f"{(d.file_hash or '')[:16]} | {d.source_url or d.local_source_path} |")
+                     f"{(d.file_hash or '')[:16]} | {_public_source(d)} |")
     return "\n".join(lines) + "\n"

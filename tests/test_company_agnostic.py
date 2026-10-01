@@ -51,7 +51,7 @@ def test_no_company_identifiers_in_engine_code_or_frameworks(root):
 def test_no_branching_on_company_identity(root):
     pattern = re.compile(r"\b(ticker|company_name|company\.name|cik)\s*(==|!=|in)\s*[\"'\[(]")
     hits = [f"{p.relative_to(root)}:{i}" for p in (root / "src").rglob("*.py")
-            for i, line in enumerate(p.read_text().splitlines(), 1) if pattern.search(line)]
+            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if pattern.search(line)]
     assert not hits, hits
 
 
@@ -68,7 +68,7 @@ def test_new_company_needs_only_a_config(tmp_path, frameworks_dir, capsys):
         sources:
           annual_reports:
             - url: https://example.org/bnh-annual-report.pdf
-    """))
+    """), encoding="utf-8")
     assert main(["validate", "--config", str(cfg), "--frameworks", str(frameworks_dir)]) == 0
     out = capsys.readouterr().out
     assert "lse-bnh" in out and "software (explicit override)" in out
@@ -78,3 +78,17 @@ def test_research_command_fails_loudly(root, frameworks_dir, capsys):
     cfg = next(iter(_company_configs(root)))
     assert main(["research", "--config", str(cfg), "--frameworks", str(frameworks_dir)]) == 2
     assert "not implemented" in capsys.readouterr().err
+
+
+def test_every_text_file_operation_names_its_encoding(root):
+    """Windows defaults to cp1252: a file written in UTF-8 and read back without saying so turns
+    "–" and "†" into mojibake. Every text read or write in the engine states UTF-8."""
+    call = re.compile(r"\.(read_text|write_text)\(|(?<![\w.])open\(")
+    offenders = []
+    for path in (root / "src").rglob("*.py"):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(lines, 1):
+            statement = " ".join(lines[i - 1:i + 2])  # a call may continue on the next lines
+            if call.search(line) and "encoding" not in statement and not re.search(r"['\"][rwa]b['\"]|fdopen|urlopen|pdfplumber", statement):
+                offenders.append(f"{path.relative_to(root)}:{i}")
+    assert not offenders, offenders

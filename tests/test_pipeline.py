@@ -36,16 +36,18 @@ def test_end_to_end_outputs(config, tmp_path, frameworks, fake_fetcher):
     for name in ("facts.jsonl", "facts_current.csv", "historical_annual.csv", "historical_interim.csv", "lineage.json",
                  "extraction_report.json", "extraction_report.md", "sources.md", "manifest.json"):
         assert (out / name).is_file(), name
-    manifest = json.loads((out / "manifest.json").read_text())
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["framework"]["name"] == "banks" and manifest["parser_version"]
-    annual = (out / "historical_annual.csv").read_text().splitlines()
+    annual = (out / "historical_annual.csv").read_text(encoding="utf-8").splitlines()
     assert "revenue,USD,50000000000,54500000000,60000000000" in annual
-    assert any("not implemented" in w for w in result.warnings)  # PDF retrieved, not parsed: said out loud
+    # The configured PDF is studied, and a document that cannot be checked is reported, not used.
+    assert result.documents and all(d["status"] != "verified" for d in result.documents)
+    assert json.loads((out / "documents.json").read_text(encoding="utf-8"))["documents"]
 
 
 def test_lineage_from_csv_value_to_source_url(config, tmp_path, frameworks, fake_fetcher):
     ingest(config, tmp_path, frameworks, fake_fetcher)
-    graph = json.loads((tmp_path / "output" / "lineage.json").read_text())
+    graph = json.loads((tmp_path / "output" / "lineage.json").read_text(encoding="utf-8"))
     nodes = {n["id"]: n for n in graph["nodes"]}
     parents = {}
     for e in graph["edges"]:
@@ -76,7 +78,7 @@ def test_refresh_with_changed_filing_creates_new_version(config, tmp_path, frame
     actions = {o.record.source_url: o.action for o in second.outcomes}
     assert actions[COMPANYFACTS_URL] == "new_version" and actions[SUBMISSIONS_URL] == "cached"
     assert len(second.facts) == len(first.facts) + 1
-    sources = (tmp_path / "output" / "sources.md").read_text()
+    sources = (tmp_path / "output" / "sources.md").read_text(encoding="utf-8")
     assert "superseded" in sources
 
 
@@ -97,17 +99,17 @@ def test_offline_without_cache_fails_each_document(config, tmp_path, frameworks)
 
 
 def test_ticker_mismatch_is_fatal(tmp_path, frameworks, sec_bank_config_path):
-    text = sec_bank_config_path.read_text().replace('ticker: "EXBK"', 'ticker: "WRONG"')
+    text = sec_bank_config_path.read_text(encoding="utf-8").replace('ticker: "EXBK"', 'ticker: "WRONG"')
     cfg_path = tmp_path / "c.yaml"
-    cfg_path.write_text(text)
+    cfg_path.write_text(text, encoding="utf-8")
     with pytest.raises(ExtractionError, match="identity mismatch: ticker WRONG"):
         ingest(load_project_config(cfg_path), tmp_path, frameworks, FakeFetcher())
 
 
 def test_cik_mismatch_caught_before_network(tmp_path, frameworks, sec_bank_config_path):
-    text = sec_bank_config_path.read_text().replace('cik: "0009999002"', 'cik: "0009999003"')
+    text = sec_bank_config_path.read_text(encoding="utf-8").replace('cik: "0009999002"', 'cik: "0009999003"')
     cfg_path = tmp_path / "c.yaml"
-    cfg_path.write_text(text)
+    cfg_path.write_text(text, encoding="utf-8")
     fetcher = FakeFetcher()
     with pytest.raises(ConfigError, match="CIK mismatch"):
         ingest(load_project_config(cfg_path), tmp_path, frameworks, fetcher)
@@ -115,17 +117,17 @@ def test_cik_mismatch_caught_before_network(tmp_path, frameworks, sec_bank_confi
 
 
 def test_fiscal_year_end_conflict(tmp_path, frameworks, sec_bank_config_path):
-    text = sec_bank_config_path.read_text().replace('reporting_currency: "USD"', 'reporting_currency: "USD"\n  fiscal_year_end_month: 6')
+    text = sec_bank_config_path.read_text(encoding="utf-8").replace('reporting_currency: "USD"', 'reporting_currency: "USD"\n  fiscal_year_end_month: 6')
     cfg_path = tmp_path / "c.yaml"
-    cfg_path.write_text(text)
+    cfg_path.write_text(text, encoding="utf-8")
     with pytest.raises(ConfigError, match="SEC reports month 12"):
         ingest(load_project_config(cfg_path), tmp_path, frameworks, FakeFetcher())
 
 
 def test_config_override_beats_sic(tmp_path, frameworks, sec_bank_config_path):
-    text = sec_bank_config_path.read_text().replace('reporting_currency: "USD"', 'reporting_currency: "USD"\n  industry_framework: generic')
+    text = sec_bank_config_path.read_text(encoding="utf-8").replace('reporting_currency: "USD"', 'reporting_currency: "USD"\n  industry_framework: generic')
     cfg_path = tmp_path / "c.yaml"
-    cfg_path.write_text(text)
+    cfg_path.write_text(text, encoding="utf-8")
     result = ingest(load_project_config(cfg_path), tmp_path, frameworks, FakeFetcher())
     assert result.framework.method == "config_override" and "suggests banks" in result.framework.evidence
 

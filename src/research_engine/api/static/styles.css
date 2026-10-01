@@ -271,6 +271,18 @@ thead th.est { background: #eef3fc; }
 .mark { font-size: .75em; vertical-align: super; margin-left: 1px; font-weight: 700; }
 .mark.flag { color: var(--warn); }
 .mark.fb { color: #6a3fb5; }
+.mark.doc { color: var(--accent); font-style: normal; }
+.tag.ok { color: var(--pos); border-color: #a6dcc2; background: #ecf8f2; }
+.doctitle { display: block; font-weight: 600; white-space: normal; }
+.small { display: block; font-size: .8rem; font-weight: 400; white-space: normal; }
+.quote { font-style: italic; }
+.docform { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; margin: 12px 0; }
+.fld { display: flex; flex-direction: column; gap: 4px; font-size: .84rem; color: var(--muted); font-weight: 600; min-width: 200px; }
+.fld.wide { flex: 1 1 420px; }
+.fld input, .fld select { font: inherit; font-weight: 400; color: var(--text); min-height: 40px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.fld input[type="file"] { padding: 6px; }
+details.more-inline > summary { cursor: pointer; color: var(--accent); min-height: 32px; font-size: .9rem; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 10px 18px 14px; margin: 0; color: var(--muted); font-size: .82rem; border-top: 1px solid var(--border-soft); }
 
 /* ---- charts ---- */

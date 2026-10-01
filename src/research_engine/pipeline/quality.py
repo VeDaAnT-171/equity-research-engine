@@ -46,7 +46,7 @@ def run_quality_stage(config: ProjectConfig, *, workspace: Path, frameworks: Fra
     manifest_path = out / "manifest.json"
     if not manifest_path.is_file():
         raise ConfigError(f"{manifest_path} not found: run `ingest` first")
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     config_hash = hashlib.sha256(config.model_dump_json().encode()).hexdigest()
     if manifest.get("config_sha256") != config_hash:
         raise ConfigError("the company config changed since the last ingestion; re-run `ingest` before `quality`")
@@ -59,7 +59,7 @@ def run_quality_stage(config: ProjectConfig, *, workspace: Path, frameworks: Fra
         raise ConfigError(f"industry framework {framework.name!r} changed since the last ingestion; re-run `ingest`")
     facts = _load_facts(out / "facts.jsonl")
     extraction_path = out / "extraction_report.json"
-    extraction = json.loads(extraction_path.read_text()) if extraction_path.is_file() else None
+    extraction = json.loads(extraction_path.read_text(encoding="utf-8")) if extraction_path.is_file() else None
 
     current, derived, report = run_quality(facts, framework=framework, company_id=config.company_id,
                                            historical_years=config.research.historical_years,

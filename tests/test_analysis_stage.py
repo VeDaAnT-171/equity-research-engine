@@ -42,9 +42,9 @@ def test_outputs_and_datasets(prepared, tmp_path, frameworks):
     assert set(facts.column("provenance").to_pylist()) == {"reported", "derived"}
     roe = [r for r in analytics.to_pylist() if r["analytic_id"] == "return_on_average_equity"]
     assert roe and roe[0]["quality_flags"] == ["balance_sheet_identity"] and roe[0]["basis"] == "average"
-    summary = json.loads((out / "historical_summary.json").read_text())
+    summary = json.loads((out / "historical_summary.json").read_text(encoding="utf-8"))
     assert summary["classification"] == "model_output" and "revenue_growth" in summary["summaries"]
-    md = (out / "historical_analysis.md").read_text()
+    md = (out / "historical_analysis.md").read_text(encoding="utf-8")
     assert "MODEL OUTPUT" in md and "† flagged FY2025" in md
     rendered = [c for c in result.charts if not c.skipped]
     assert rendered and all((out / f).is_file() for c in rendered for f in c.files)
@@ -53,7 +53,7 @@ def test_outputs_and_datasets(prepared, tmp_path, frameworks):
 
 def test_chart_traces_to_source_url(prepared, tmp_path, frameworks):
     run_analysis_stage(prepared, workspace=tmp_path, frameworks=frameworks)
-    graph = json.loads((tmp_path / "output" / "lineage.json").read_text())
+    graph = json.loads((tmp_path / "output" / "lineage.json").read_text(encoding="utf-8"))
     kinds = {n["id"]: n["kind"] for n in graph["nodes"]}
     parents = {}
     for e in graph["edges"]:
@@ -84,8 +84,8 @@ def test_framework_edit_is_detected(prepared, tmp_path, frameworks_dir):
     import shutil
     edited = tmp_path / "frameworks"
     shutil.copytree(frameworks_dir, edited)
-    text = (edited / "banks.yaml").read_text().replace("name: Loans / deposits", "name: Loan-to-deposit ratio")
-    (edited / "banks.yaml").write_text(text)
+    text = (edited / "banks.yaml").read_text(encoding="utf-8").replace("name: Loans / deposits", "name: Loan-to-deposit ratio")
+    (edited / "banks.yaml").write_text(text, encoding="utf-8")
     with pytest.raises(ConfigError, match="framework 'banks' changed"):
         run_analysis_stage(prepared, workspace=tmp_path, frameworks=FrameworkRegistry(edited))
 
@@ -119,7 +119,7 @@ def test_a_series_that_stops_early_is_recorded_not_silently_cropped(tmp_path, fr
     assert r.truncated == {"revenue": 2022}
     assert any("no value after FY2022" in n and "No figure for loans is reported" in n for n in r.notes)
     assert not any("input_missing" in n for n in r.notes)
-    assert "Incomplete over the period shown" in (tmp_path / "t" / "revenue.svg").read_text()
+    assert "Incomplete over the period shown" in (tmp_path / "t" / "revenue.svg").read_text(encoding="utf-8")
 
 
 def test_a_complete_series_gets_no_truncation_note(tmp_path, frameworks_dir):

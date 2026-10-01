@@ -49,6 +49,48 @@ METHOD_FAMILY: dict[ValuationMethod, ValuationFamily] = {
 }
 
 
+class DocumentHints(StrictModel):
+    """How to find a metric in a filed or uploaded document when structured data lacks it.
+
+    Every pattern is a case-insensitive regular expression matched in full, and none may name a
+    company: frameworks describe an industry, so they match the wording and the taxonomy of the
+    industry, never one filer's extension prefix.
+    """
+
+    # Row labels in a financial table, after footnote markers are removed.
+    labels: tuple[str, ...] = ()
+    # Optional: the column heading a value must sit under when one row holds several values per
+    # year (an average-balance table has balance, interest and rate side by side).
+    column: str | None = None
+    # Local names of inline XBRL concepts, any prefix (filer extensions included).
+    concepts: tuple[str, ...] = ()
+    # Axis local name -> member local name. A tagged value qualifies only if every axis it
+    # carries is listed here and its member matches.
+    dimensions: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("labels", "concepts")
+    @classmethod
+    def _patterns(cls, v: tuple[str, ...]) -> tuple[str, ...]:
+        for pattern in v:
+            re.compile(pattern)
+        return v
+
+    @field_validator("column")
+    @classmethod
+    def _column(cls, v: str | None) -> str | None:
+        if v is not None:
+            re.compile(v)
+        return v
+
+    @field_validator("dimensions")
+    @classmethod
+    def _dimensions(cls, v: dict[str, str]) -> dict[str, str]:
+        for axis, member in v.items():
+            re.compile(axis)
+            re.compile(member)
+        return v
+
+
 class MetricSpec(StrictModel):
     id: str = Field(pattern=METRIC_ID_PATTERN)
     name: str = Field(min_length=1)
@@ -62,6 +104,8 @@ class MetricSpec(StrictModel):
     derivation: str | None = None
     # For KPIs with no standard tag (company-defined operating metrics).
     extraction_hint: str | None = None
+    # Where to find it in documents (annual reports, supplements, presentations).
+    document: DocumentHints | None = None
     # Data-quality metadata. Levels like assets or revenue cannot be negative; flows like cash change can.
     expected_sign: Literal["non_negative", "any"] = "any"
     # Whether sub-period values sum to the full period (enables Q4 = FY - 9M). Default: currency flows.

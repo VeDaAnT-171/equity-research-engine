@@ -40,7 +40,7 @@ def scratch(tmp_path, frameworks_dir):
 
 
 def add(dirpath, name, body):
-    (dirpath / f"{name}.yaml").write_text(textwrap.dedent(body))
+    (dirpath / f"{name}.yaml").write_text(textwrap.dedent(body), encoding="utf-8")
 
 
 def test_unknown_metric_in_formula(scratch):

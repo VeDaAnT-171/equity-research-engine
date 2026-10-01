@@ -38,7 +38,7 @@ def test_stage_writes_every_artifact(prepared, tmp_path, frameworks):
     table = pq.read_table(out / "forecast.parquet")
     assert table.num_rows == len(result.forecast.values) > 0
     assert set(table.column("scenario").to_pylist()) == {"base"}
-    manifest = json.loads((out / "forecast_manifest.json").read_text())
+    manifest = json.loads((out / "forecast_manifest.json").read_text(encoding="utf-8"))
     assert manifest["base_year"] == result.forecast.base_year
     assert manifest["assumptions_file"] is None  # none supplied in this fixture
     assert manifest["engine_version"] == "0.7.0"
@@ -46,7 +46,7 @@ def test_stage_writes_every_artifact(prepared, tmp_path, frameworks):
 
 def test_report_labels_model_output_and_shows_the_plan(prepared, tmp_path, frameworks):
     run_forecast_stage(prepared, workspace=tmp_path, frameworks=frameworks)
-    md = (tmp_path / "output" / "forecast.md").read_text()
+    md = (tmp_path / "output" / "forecast.md").read_text(encoding="utf-8")
     assert "MODEL OUTPUT" in md
     assert "## Projection plan" in md
     assert "## Assumptions in force" in md
@@ -55,7 +55,7 @@ def test_report_labels_model_output_and_shows_the_plan(prepared, tmp_path, frame
 
 def test_assumptions_json_records_the_plan_and_every_refusal(prepared, tmp_path, frameworks):
     run_forecast_stage(prepared, workspace=tmp_path, frameworks=frameworks)
-    doc = json.loads((tmp_path / "output" / "assumptions.json").read_text())
+    doc = json.loads((tmp_path / "output" / "assumptions.json").read_text(encoding="utf-8"))
     assert doc["resolution_order"] == ["scenario", "analyst_assumption", "management_guidance",
                                        "consensus", "historical"]
     plan = {row["metric_id"]: row for row in doc["projection_plan"]}
@@ -101,7 +101,7 @@ assumptions:
     assert result.forecast.by_scenario["base"]["total_equity"][year].assumption_types == ("analyst_assumption",)
     assert (result.forecast.by_scenario["bull"]["total_equity"][year].value
             > result.forecast.by_scenario["base"]["total_equity"][year].value)
-    manifest = json.loads((tmp_path / "output" / "forecast_manifest.json").read_text())
+    manifest = json.loads((tmp_path / "output" / "forecast_manifest.json").read_text(encoding="utf-8"))
     assert manifest["assumptions_file"] == "assumptions.yaml" and manifest["assumptions_sha256"]
     assert sorted(manifest["scenarios"]) == ["base", "bull"]
 
@@ -116,7 +116,7 @@ def test_a_bad_analyst_file_fails_the_stage(prepared, tmp_path, frameworks):
 
 def test_forecast_traces_to_a_source_url(prepared, tmp_path, frameworks):
     result = run_forecast_stage(prepared, workspace=tmp_path, frameworks=frameworks)
-    graph = json.loads((tmp_path / "output" / "lineage.json").read_text())
+    graph = json.loads((tmp_path / "output" / "lineage.json").read_text(encoding="utf-8"))
     kinds = {n["id"]: n["kind"] for n in graph["nodes"]}
     parents: dict[str, list[str]] = {}
     for e in graph["edges"]:
@@ -143,9 +143,9 @@ def test_stale_analysis_is_rejected(prepared, tmp_path, frameworks):
     (tmp_path / "am.bak").rename(tmp_path / "output" / "analysis_manifest.json")
     # a data-quality run newer than the historical analysis leaves the forecast's inputs stale
     quality_manifest = tmp_path / "output" / "quality_manifest.json"
-    doc = json.loads(quality_manifest.read_text())
+    doc = json.loads(quality_manifest.read_text(encoding="utf-8"))
     doc["generated_at"] = "2099-01-01T00:00:00+00:00"
-    quality_manifest.write_text(json.dumps(doc, indent=2))
+    quality_manifest.write_text(json.dumps(doc, indent=2), encoding="utf-8")
     with pytest.raises(ConfigError, match="re-run `analyze`"):
         run_forecast_stage(prepared, workspace=tmp_path, frameworks=frameworks)
 

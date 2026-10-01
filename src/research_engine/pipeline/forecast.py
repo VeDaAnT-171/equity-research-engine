@@ -88,8 +88,8 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
     manifest_path = _require(out / "manifest.json", "run `ingest` first")
     quality_manifest_path = _require(out / "quality_manifest.json", "run `quality` first")
     analysis_manifest_path = _require(out / "analysis_manifest.json", "run `analyze` first")
-    manifest = json.loads(manifest_path.read_text())
-    analysis_manifest = json.loads(analysis_manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    analysis_manifest = json.loads(analysis_manifest_path.read_text(encoding="utf-8"))
 
     if manifest.get("config_sha256") != hashlib.sha256(config.model_dump_json().encode()).hexdigest():
         raise ConfigError("the company config changed since the last ingestion; re-run `ingest`, `quality`, `analyze`")
@@ -131,7 +131,7 @@ def run_forecast_stage(config: ProjectConfig, *, workspace: Path,
             lineage.link(analytic.value_id, parent)
     charts_index = out / "charts" / "index.json"
     if charts_index.is_file():
-        for chart in json.loads(charts_index.read_text()):
+        for chart in json.loads(charts_index.read_text(encoding="utf-8")):
             if chart.get("skipped"):
                 continue
             node = f"chart:{chart['chart_id']}"

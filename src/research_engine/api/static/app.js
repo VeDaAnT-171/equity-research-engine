@@ -238,10 +238,14 @@ async function openSource(nodeId, title, shown) {
   body.innerHTML = '<p class="empty">Loading…</p>';
   $('#drawer-close').focus();
   try {
-    const [t, assumptions] = await Promise.all([
+    const [t, assumptions, library] = await Promise.all([
       api(forCompany(`/lineage/${encodeURIComponent(nodeId)}`)),
       optional(api(forCompany('/assumptions'))).catch(() => null),
+      api(forCompany('/library')).catch(() => null),
     ]);
+    // A figure read from a library document names that document, not the SEC's structured data.
+    const docTitle = new Map((library?.documents || []).filter((d) => d.document_id).map((d) => [d.document_id, d]));
+    const parentDoc = (id) => (t.edges || []).filter((e) => e.child === id).map((e) => docTitle.get(e.parent)).find(Boolean);
     const cur = (state.companies.find((c) => c.company_id === state.companyId) || {}).currency;
     const sourceUrl = (t.source_urls || [])[0] || '';
     const cik = (sourceUrl.match(/CIK0*(\d+)/) || [])[1];
@@ -284,16 +288,28 @@ async function openSource(nodeId, title, shown) {
     const factRows = facts.map((n) => {
       const a = n.attributes || {};
       const link = filingLink(a.filing_accession, cik);
-      const how = a.filing_form
-        ? `${esc(a.filing_form)} filed ${esc(dateText(a.filed_date))}${link
-          ? ` · <a href="${esc(link)}" target="_blank" rel="noopener noreferrer">View filing</a>` : ''}`
-        : (a.formula ? `Calculated: ${esc(formulaText(a.formula))}` : '');
+      const doc = parentDoc(n.id);
+      const how = doc
+        ? `${esc(doc.title)}${a.table ? ` · ${esc(a.table)}` : ''}${a.page ? ` · page ${esc(a.page)}` : ''}`
+        : a.filing_form
+          ? `${esc(a.filing_form)} filed ${esc(dateText(a.filed_date))}${link
+            ? ` · <a href="${esc(link)}" target="_blank" rel="noopener noreferrer">View filing</a>` : ''}`
+          : (a.formula ? `Calculated: ${esc(formulaText(a.formula))}` : '');
       return `<li><div class="row"><span class="name">${esc(label(n.label))} · ${esc(a.period || '')}</span>
         <span class="val">${esc(fmt(Number(a.value), unitOf(n.label), cur))}</span></div>
         <p class="how">${how}</p>
         ${a.xbrl_concept ? `<p class="how"><span class="tagname">${esc(a.xbrl_concept)}</span></p>` : ''}</li>`;
     }).join('');
-    if (root.kind === 'fact') {
+    const rootDoc = root.kind === 'fact' ? parentDoc(root.id) : null;
+    if (rootDoc) {
+      html += `<h3>Read from</h3><ul class="sources"><li>
+        <div class="row"><span class="name">${esc(rootDoc.title)}</span><span class="val">${esc(rootDoc.kind_label)}</span></div>
+        <p class="how">${esc([attr.table, attr.page ? `page ${attr.page}` : '', attr.period].filter(Boolean).join(' · '))}</p>
+        ${attr.source_text ? `<p class="how quote">“${esc(attr.source_text)}”</p>` : ''}
+        ${attr.xbrl_concept ? `<p class="how"><span class="tagname">${esc(attr.xbrl_concept)}</span></p>` : ''}
+        <p class="how">${esc(rootDoc.reason)}</p>
+      </li></ul>`;
+    } else if (root.kind === 'fact' && !attr.formula) {
       const link = filingLink(attr.filing_accession, cik);
       html += `<h3>Reported in</h3><ul class="sources"><li>
         <div class="row"><span class="name">${esc(attr.filing_form || 'Filing')}</span>
@@ -424,11 +440,12 @@ function latest(series) {
 }
 
 async function viewSummary() {
-  const [g, fin, a, charts, f, o] = await Promise.all([
+  const [g, fin, a, charts, f, o, lib] = await Promise.all([
     glossary(), api(forCompany('/financials')), api(forCompany('/analytics')),
     api(forCompany('/charts')).catch(() => []), optional(api(forCompany('/forecast'))).catch(() => null),
-    api(forCompany('')),
+    api(forCompany('')), api(forCompany('/library')).catch(() => null),
   ]);
+  const inUse = (lib?.documents || []).filter((d) => d.status === 'verified').length;
   const cur = fin.currency;
   const rows = Object.fromEntries(fin.statements.flatMap((s) => s.rows).map((r) => [r.metric_id, r]));
   const series = Object.fromEntries(a.series.map((s) => [s.analytic_id, s]));
@@ -487,9 +504,11 @@ async function viewSummary() {
   const reviewCount = o.counts?.issues?.warning ?? 0;
   const about = `<section class="card"><div class="card-head"><h2>About this data</h2></div>
     <div class="body"><dl class="kv">
-      <dt>Source</dt><dd>Annual and quarterly reports filed with the U.S. SEC (10-K, 10-Q)</dd>
+      <dt>Source</dt><dd>SEC structured financial data from 10-K and 10-Q filings${inUse ? ', plus the documents in the library' : ''}</dd>
       <dt>Coverage</dt><dd>FY${esc(fin.fiscal_years[0])}–FY${esc(lastYear)}, full fiscal years</dd>
       ${o.framework?.evidence ? `<dt>Industry</dt><dd>${esc(g.model_name || g.sector || '')} <span class="muted">· ${esc(o.framework.evidence.replace(/ \((.*)\)$/, ', $1'))}</span></dd>` : ''}
+      <dt>Documents</dt><dd>${inUse ? `${esc(inUse)} in use` : 'None yet'}
+        · <button type="button" class="linkbtn" data-action="tab" data-value="sources">${HOSTED.on && !inUse ? 'Add one' : 'Sources'}</button></dd>
       <dt>Data checks</dt><dd>${reviewCount ? `${esc(reviewCount)} item${reviewCount === 1 ? '' : 's'} to review` : 'No items to review'}
         · <button type="button" class="linkbtn" data-action="tab" data-value="checks">Details</button></dd>
       <dt>Updated</dt><dd>${esc(dateText(SNAPSHOT ? SNAPSHOT.getAttribute('content') : o.generated_at))}</dd>
@@ -512,14 +531,18 @@ async function viewFinancials() {
   const years = yearsShown(fin.fiscal_years);
   const hasShares = s.rows.some((r) => r.unit_kind === 'count');
   const hasPerShare = s.rows.some((r) => r.unit_kind === 'currency_per_share');
-  const unitNote = `${esc(fin.currency || '')} millions${hasPerShare ? ', except per-share amounts' : ''}${hasShares ? '; shares in millions' : ''}`;
+  const hasRatio = s.rows.some((r) => r.unit_kind === 'ratio');
+  const unitNote = `${esc(fin.currency || '')} millions${hasPerShare ? ', except per-share amounts' : ''}${hasShares ? '; shares in millions' : ''}${hasRatio ? '; ratios in %' : ''}`;
 
+  let anyDoc = false;
   const body = s.rows.map((r) => `<tr><th scope="row">${esc(r.label)}</th>${years.map((y) => {
     const c = r.values[String(y)];
     if (!c) return '<td class="num muted">–</td>';
     const text = fmtStatement(c.value, r.unit_kind);
+    const fromDoc = c.document ? `<span class="mark doc" aria-hidden="true">d</span><span class="sr-only"> (from ${esc(c.document)})</span>` : '';
+    if (c.document) anyDoc = true;
     return `<td class="num${c.value < 0 ? ' neg' : ''}">${traceable(c.fact_id, text, `${r.label}, FY${y}`, c.derived ? 'calc' : '', fmt(c.value, r.unit_kind, fin.currency))}${
-      c.derived ? '<span class="sr-only"> (calculated)</span>' : ''}</td>`;
+      c.derived ? '<span class="sr-only"> (calculated)</span>' : ''}${fromDoc}</td>`;
   }).join('')}</tr>`).join('');
 
   return `<div class="toolbar">
@@ -533,6 +556,7 @@ async function viewFinancials() {
         <thead><tr>${th('')}${years.map((y) => th(`FY${y}`, 'num')).join('')}</tr></thead>
         <tbody>${body}</tbody></table></div>
       <p class="legend"><span><em>Italic</em>: not reported directly; calculated from other reported lines.</span>
+        ${anyDoc ? '<span><span class="mark doc" aria-hidden="true">d</span> Read from a document in the library (see Sources).</span>' : ''}
         <span>Select any figure to see the filing it came from.</span></p>
     </div></section>`;
 }
@@ -717,6 +741,160 @@ async function viewChecks() {
       ${table(notes)}</details></section>` : ''}`;
 }
 
+/* ---------- sources ---------- */
+
+const STATUS_TAG = { verified: 'ok', unverified: '', rejected: 'excluded', pending: 'review' };
+
+function periodsText(periods) {
+  const years = periods.map((p) => Number(String(p).replace(/^FY/, ''))).filter(Boolean).sort();
+  if (!years.length) return periods.join(', ');
+  const runs = [];
+  for (const y of years) {
+    const last = runs[runs.length - 1];
+    if (last && y === last[1] + 1) last[1] = y; else runs.push([y, y]);
+  }
+  return runs.map(([a, b]) => (a === b ? `FY${a}` : `FY${a}–FY${b}`)).join(', ');
+}
+
+function uploadCard() {
+  const info = HOSTED.info || {};
+  if (!HOSTED.on || !info.documents) return '';
+  return `<section class="card" aria-labelledby="add-doc-title" style="margin-top:16px">
+    <div class="card-head"><h2 id="add-doc-title">Add a document</h2>
+      <span class="sub">HTML or PDF, up to ${esc(info.max_document_mb || 25)} MB</span></div>
+    <div class="body">
+      <p class="muted" style="margin-top:0">Annual reports, quarterly reports, earnings releases and investor presentations
+        help most. The document is read, checked against the SEC figures it shares with them, and used only to fill
+        figures the SEC data doesn't have. ${info.documents_saved
+          ? 'Documents that pass their checks are proposed for the permanent library, so they stay for everyone.'
+          : 'Documents added here are kept on this server until it restarts.'}</p>
+      <form id="doc-form" class="docform">
+        <label class="fld"><span>File</span>
+          <input type="file" name="file" accept=".htm,.html,.xhtml,.pdf,text/html,application/pdf" required></label>
+        <label class="fld"><span>Type</span>
+          <select name="kind">
+            <option value="annual_report">Annual report (10-K)</option>
+            <option value="quarterly_report">Quarterly report (10-Q)</option>
+            <option value="earnings_release">Earnings release</option>
+            <option value="investor_presentation">Investor presentation</option>
+            <option value="other">Other</option>
+          </select></label>
+        <label class="fld"><span>Title <span class="muted">(optional)</span></span>
+          <input type="text" name="title" maxlength="120" placeholder="e.g. Annual report 2025"></label>
+        <button type="submit" class="btn">Add document</button>
+      </form>
+      <details class="more-inline"><summary>Or add an SEC filing by its EDGAR address</summary>
+        <form id="sec-form" class="docform">
+          <label class="fld wide"><span>EDGAR document address</span>
+            <input type="url" name="url" required placeholder="https://www.sec.gov/Archives/edgar/data/…/….htm"></label>
+          <label class="fld"><span>Type</span>
+            <select name="kind"><option value="annual_report">Annual report (10-K)</option>
+              <option value="quarterly_report">Quarterly report (10-Q)</option><option value="other">Other</option></select></label>
+          <button type="submit" class="btn">Add filing</button>
+        </form></details>
+      <div id="doc-run" aria-live="polite"></div>
+    </div></section>`;
+}
+
+async function viewSources() {
+  const lib = await api(forCompany('/library'));
+  const docs = lib.documents || [];
+  const rows = docs.map((d) => {
+    const added = d.contributed.length
+      ? d.contributed.map((c) => `${esc(c.label)} <span class="muted">(${esc(periodsText(c.periods))})</span>`).join('<br>')
+      : '<span class="muted">–</span>';
+    const origin = d.url
+      ? `<a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">SEC filing</a>`
+      : d.has_file && !SNAPSHOT
+        ? `<a href="${resolve(forCompany(`/library/${encodeURIComponent(d.id)}/file`))}" target="_blank" rel="noopener">${d.media_type === 'pdf' ? 'PDF' : 'Download'}</a>` : '';
+    const who = d.added_by === 'visitor' ? 'Added by a visitor' : d.added_by === 'config' ? 'Configured source' : 'Added by the owner';
+    return `<tr>
+      <th scope="row"><span class="doctitle">${esc(d.title)}</span>
+        <span class="muted small">${esc(d.kind_label)}${d.form ? ` · ${esc(d.form)}` : ''}${d.filed ? ` · filed ${esc(dateText(d.filed))}` : ''}</span>
+        <span class="muted small">${esc(who)}${d.added_at ? `, ${esc(dateText(d.added_at))}` : ''}${origin ? ` · ${origin}` : ''}</span></th>
+      <td><span class="tag ${STATUS_TAG[d.status] || ''}">${esc(d.status_label)}</span></td>
+      <td>${added}</td>
+      <td class="wrap muted">${esc(d.reason)}</td></tr>`;
+  }).join('');
+  const src = lib.structured_source || {};
+  return `<div class="note" role="note"><p><strong>Where these figures come from.</strong> Reported statements come from
+      the SEC's structured financial data. Documents in the library fill what it lacks — ratios, averages and
+      capital figures that are printed in the reports but not tagged. A document's numbers are used only after it
+      agrees with the SEC on the figures both contain, and never replace an SEC figure.</p></div>
+    <section class="card"><div class="card-head"><h2>Primary source</h2></div>
+      <div class="body"><p style="margin:0">${esc(src.title || 'SEC structured financial data')}${src.url
+        ? ` · <a href="${esc(src.url)}" target="_blank" rel="noopener noreferrer">Company filings on EDGAR</a>` : ''}</p></div></section>
+    <h2 class="section">Document library <span class="hint">${esc(docs.length)} document${docs.length === 1 ? '' : 's'}</span></h2>
+    <section class="card"><div class="body flush">${docs.length ? `<div class="tablewrap" tabindex="0" role="region" aria-label="Document library, scrollable"><table>
+      <thead><tr>${th('Document')}${th('Status')}${th('What it added')}${th('Check')}</tr></thead>
+      <tbody>${rows}</tbody></table></div>`
+      : '<p class="empty">No documents yet.</p>'}</div></section>
+    ${uploadCard()}`;
+}
+
+async function afterDocumentAdded(body) {
+  const slot = $('#doc-run');
+  if (!body.run) {
+    slot.innerHTML = `<p class="muted">This document is already in the library.</p>`;
+    return;
+  }
+  let job = body.run;
+  const step = async () => {
+    slot.innerHTML = runCard({ ...job, name: body.document.title, ticker: '' });
+    if (job.state === 'done' || job.state === 'failed') {
+      state.cache.clear();
+      if (job.state === 'done') {
+        announce('Document analysed.');
+        await companyBand().catch(() => {});
+        rerender();
+      }
+      return;
+    }
+    setTimeout(async () => {
+      try { job = await api(`/api/runs/${encodeURIComponent(job.job_id)}`, { fresh: true }); } catch { /* keep polling */ }
+      step();
+    }, 1500);
+  };
+  step();
+}
+
+panel.addEventListener('submit', async (e) => {
+  const form = e.target.closest('#doc-form, #sec-form');
+  if (!form) return;
+  e.preventDefault();
+  const button = form.querySelector('button[type="submit"]');
+  const slot = $('#doc-run');
+  const data = new FormData(form);
+  button.disabled = true;
+  slot.innerHTML = '<p class="muted">Uploading…</p>';
+  try {
+    let res;
+    if (form.id === 'doc-form') {
+      const file = data.get('file');
+      const limit = (HOSTED.info.max_document_mb || 25) * 1024 * 1024;
+      if (!file || !file.size) throw new Error('Choose a file first.');
+      if (file.size > limit) throw new Error(`The file is larger than ${HOSTED.info.max_document_mb || 25} MB.`);
+      const params = new URLSearchParams({ filename: file.name, kind: data.get('kind') });
+      if (data.get('title')) params.set('title', data.get('title'));
+      res = await fetch(`${forCompany('/library')}?${params}`, {
+        method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
+    } else {
+      res = await fetch(forCompany('/library'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: data.get('url'), kind: data.get('kind') }) });
+    }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'The document could not be added.');
+    form.reset();
+    afterDocumentAdded(body);
+  } catch (err) {
+    slot.innerHTML = `<p class="err">${esc(err.message)}</p>`;
+    announce(err.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 /* ---------- navigation ---------- */
 
 function rememberLocation() {
@@ -725,6 +903,7 @@ function rememberLocation() {
 
 const VIEWS = {
   summary: viewSummary, financials: viewFinancials, ratios: viewRatios, forecast: viewForecast, checks: viewChecks,
+  sources: viewSources,
 };
 const tabs = () => $$('#tabs .tab');
 
@@ -778,11 +957,16 @@ $('#company').addEventListener('change', (e) => {
 
 /* ---------- company search (hosted) ---------- */
 
-const HOSTED = { on: false, poll: null };
+const HOSTED = { on: false, poll: null, info: {} };
 
 async function detectHosted() {
   if (SNAPSHOT) return false;
-  try { const res = await fetch('/api/app'); return res.ok && (await res.json()).hosted === true; } catch { return false; }
+  try {
+    const res = await fetch('/api/app');
+    if (!res.ok) return false;
+    HOSTED.info = await res.json();
+    return HOSTED.info.hosted === true;
+  } catch { return false; }
 }
 
 /* A company is listed once it is ready; one listed mid-preparation would open onto empty pages. */
@@ -808,7 +992,8 @@ function runCard(job) {
   const done = new Set(job.stages_done || []);
   const steps = (job.stages || []).map((s) => {
     const cls = done.has(s) ? 'done' : (s === job.stage && job.state === 'running' ? 'current' : '');
-    return `<li class="${cls}">${esc(STEP[s] || s)}</li>`;
+    const text = job.reason && s === 'ingest' ? 'Reading the new document' : (STEP[s] || s);
+    return `<li class="${cls}">${esc(text)}</li>`;
   }).join('');
   let status;
   if (job.state === 'queued') {

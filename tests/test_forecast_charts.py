@@ -56,7 +56,7 @@ def test_every_scenario_gets_a_distinct_line_style(framework, tmp_path):
     scenarios = {name: _series(name, [1100, 1200]) for name in ("base", "bull", "bear", "stress")}
     record = render_forecast_chart("revenue", scenarios, framework, tmp_path, base_year=2025,
                                    company_label="Test Co", engine_version="x")
-    svg = (tmp_path / "forecast_revenue.svg").read_text()
+    svg = (tmp_path / "forecast_revenue.svg").read_text(encoding="utf-8")
     assert record.skipped is None
     assert len(set(DASHES[:len(scenarios)])) == len(scenarios), "line styles must not repeat"
     # each scenario is named on the chart itself, so hue is never the only distinction
@@ -111,7 +111,7 @@ def test_rendering_removes_images_left_by_a_previous_run(framework, tmp_path):
     """A chart skipped this run writes nothing, so its old image would otherwise look current."""
     from types import SimpleNamespace
 
-    (tmp_path / "forecast_revenue.svg").write_text("<svg>from an earlier run</svg>")
+    (tmp_path / "forecast_revenue.svg").write_text("<svg>from an earlier run</svg>", encoding="utf-8")
     (tmp_path / "forecast_revenue.png").write_bytes(b"old")
     only_actual = {"base": {"revenue": {2025: _value("base", "revenue", 2025, 1000, method="actual")}}}
     result = SimpleNamespace(by_scenario=only_actual, base_year=2025,
@@ -128,10 +128,10 @@ def test_a_chart_built_on_a_fallback_says_so_in_the_image(framework, tmp_path):
     record = render_forecast_chart("revenue", {"base": marked}, framework, tmp_path, base_year=2025,
                                    company_label="Test Co", engine_version="x")
     assert record.fallback_for == ["net_interest_income"]
-    assert "Uses a trend estimate for" in (tmp_path / "forecast_revenue.svg").read_text()
+    assert "Uses a trend estimate for" in (tmp_path / "forecast_revenue.svg").read_text(encoding="utf-8")
 
 
 def test_a_chart_on_the_declared_model_carries_no_fallback_caption(framework, tmp_path):
     record = render_forecast_chart("revenue", {"base": _series("base", [1100, 1200])}, framework, tmp_path,
                                    base_year=2025, company_label="Test Co", engine_version="x")
-    assert record.fallback_for == [] and "trend estimate" not in (tmp_path / "forecast_revenue.svg").read_text()
+    assert record.fallback_for == [] and "trend estimate" not in (tmp_path / "forecast_revenue.svg").read_text(encoding="utf-8")

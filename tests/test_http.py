@@ -56,13 +56,13 @@ def test_sec_user_agent_requirement():
 
 def test_env_file(tmp_path, monkeypatch):
     env = tmp_path / ".env"
-    env.write_text('# comment\nexport RE_TEST_A="quoted value"\nRE_TEST_B=plain\nRE_TEST_C=keep\n')
+    env.write_text('# comment\nexport RE_TEST_A="quoted value"\nRE_TEST_B=plain\nRE_TEST_C=keep\n', encoding="utf-8")
     monkeypatch.setenv("RE_TEST_C", "existing")
     for k in ("RE_TEST_A", "RE_TEST_B"):
         monkeypatch.delenv(k, raising=False)
     assert load_env_file(env) == ["RE_TEST_A", "RE_TEST_B"]
     assert os.environ["RE_TEST_A"] == "quoted value" and os.environ["RE_TEST_C"] == "existing"
     assert load_env_file(tmp_path / "missing.env") == []
-    env.write_text("NOT VALID\n")
+    env.write_text("NOT VALID\n", encoding="utf-8")
     with pytest.raises(ValueError):
         load_env_file(env)

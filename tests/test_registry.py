@@ -97,7 +97,7 @@ def test_persistence_and_filters(tmp_path, registry, doc):
 
 def test_local_file_source(registry, tmp_path):
     local = tmp_path / "10k.html"
-    local.write_text("<html></html>")
+    local.write_text("<html></html>", encoding="utf-8")
     rec = registry.register("nyse-tst", DocumentType.REGULATORY_FILING, SourceRef(path=local))
     assert rec.local_source_path == str(local.resolve()) and rec.source_url is None
     stored = registry.store_raw(rec.document_id, local.read_bytes())

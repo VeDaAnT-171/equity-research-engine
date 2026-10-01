@@ -9,6 +9,39 @@ more, so no interface here should be treated as stable.
 
 ## [Unreleased]
 
+### Added — document library
+
+- **Company document library** (`documents/`): annual reports, quarterly reports, earnings
+  releases and presentations added per company, as a file (HTML or PDF) or by EDGAR address.
+  `research-engine add-document` for the owner; the hosted app's **Sources** tab for anyone.
+- **Inline XBRL reader.** Reads every tagged figure in a filed 10-K/10-Q with its scale, sign,
+  period and dimensions, recovering figures the companyfacts API omits: filer-specific concepts and
+  dimensioned values (CET1 and risk-weighted assets by regulatory approach).
+- **Table reader** for HTML and PDF. Resolves row- and colspans so every value knows its full
+  column heading; takes a value only under a fiscal-year heading, with a stated unit, and for a
+  balance never from an "average" column. Frameworks name the wording (`document:` hints on a
+  metric), never a company.
+- **Verification before use.** Registrant CIK must match; figures shared with the SEC data must
+  agree on ≥ 90% of ≥ 3; otherwise the document is rejected or left unused. A verified document
+  only fills gaps and never replaces an SEC figure. `output/documents.json` records each
+  document's result and contribution.
+- **Hosted uploads** with per-visitor limits, type sniffing, a 25 MB cap and a per-company cap;
+  uploaded HTML is only ever served as a download. Verified documents are proposed to the
+  repository as pull requests when `GITHUB_TOKEN`/`GITHUB_REPOSITORY` are set.
+- **Dashboard:** Sources tab (primary source, library with status and what each document added,
+  upload form in the hosted app); figures read from documents marked in the statements; the source
+  panel names the document, table and printed row. New statements appear when documents supply
+  them (operating metrics, regulatory capital).
+- API: `/library`, `/library/{id}/file`; `PUT`/`POST /library` in the hosted app.
+
+### Changed
+
+- JPMorgan's FY2025 10-K is in its library by EDGAR reference. With it, net interest income is
+  projected by the declared driver (average interest-earning assets × margin); the trend fallback
+  is no longer in force for it.
+- Published outputs and lineage name a local file by its file name only.
+- `lxml` and `pdfplumber` are now dependencies.
+
 ### Changed
 
 - **The dashboard is rebuilt as a reader's product.** Sections are now Summary, Financials, Ratios,

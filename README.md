@@ -81,6 +81,7 @@ failure modes are loud and the successes are checkable.
 | Read-only API | `api/repository.py`, `api/app.py` | Serves only what the pipeline wrote; a stage that has not run returns 409 with the command to run, never an empty result that looks like a clean bill of health |
 | Forecast charts | `forecast/charts.py` | Solid to the last reported year, dashed after it; scenarios separated by line style and an end label, never by hue alone; a metric with no projection is skipped rather than drawn flat |
 | Dashboard | `api/static/` | Summary, financial statements, ratios, estimates and data checks, with any figure clickable through to the filing it came from. Keyboard-operable throughout, every chart has a data table, no hover-only information. No build step, no JS dependencies |
+| Document library | `documents/`, `pipeline/ingest.py` | Reports, supplements and presentations added per company; inline XBRL and table reading; a document is used only after it agrees with the SEC on the figures both contain, and only to fill figures the SEC data lacks |
 | Company-agnostic guard | `tests/test_company_agnostic.py` | CI fails if any configured company's ticker/name/CIK appears in engine code or frameworks |
 
 ## Quick start
@@ -219,15 +220,59 @@ It is a different deployment from `serve`, with different rules because it is pu
 - **One pipeline at a time, a capped queue, and six new analyses per visitor per hour.** Reusing a
   finished company is never limited.
 - **Coverage is what the SEC has as XBRL.** Funds, trusts and most foreign issuers have no tagged
-  statements; the app says so instead of showing an empty dashboard. Uploading documents such as
-  annual reports is not supported yet — that is the next phase, and the same missing extraction is
-  why CET1, net interest margin and tangible equity are absent for banks.
+  statements; the app says so instead of showing an empty dashboard.
+- **Visitors can add documents** (see *Document library* below): five an hour each, 25 MB at most,
+  HTML or PDF only, checked before anything runs.
 
 `render.yaml` deploys it to Render's free plan (Blueprint → this repository; set `SEC_USER_AGENT`).
 The free plan sleeps after 15 minutes idle and has no disk, so after waking it re-analyses its
 showcase company first — the page shows the progress — and earlier results are recomputed when next
 requested. Peak memory analysing a large bank's full history was about 265 MB, within the free
 plan's 512 MB.
+
+### Document library: add a report, and it is studied and kept
+
+The SEC's structured data is the primary source, and it is not complete: figures a company tags
+with its own concepts, figures qualified by a dimension (a regulatory approach), and figures that
+are printed but not tagged at all never reach it. For a bank that is exactly the figures that
+matter — CET1, risk-weighted assets, average interest-earning assets, tangible common equity.
+A company's library holds the documents that fill that gap.
+
+```bash
+# owner: by EDGAR address (kept by reference) or as a file (kept in the repository)
+research-engine add-document --config companies/nyse-jpm/config.yaml \
+  --url https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm
+research-engine add-document --config companies/nyse-jpm/config.yaml --file supplement.pdf --kind earnings_release
+```
+
+In the hosted app, anyone can add one from the company's **Sources** tab.
+
+On the next `ingest`, each document is **studied**: its inline XBRL tags are read with their own
+scale, sign, period and dimensions, and its tables are read row by row, a value taken only when
+its row label matches the framework's wording for a metric and its column heading names the
+fiscal year (period-end columns for balances, never the average ones; a stated unit — "in
+millions" — is required). Then it is **verified**:
+
+- a filing whose registrant CIK is another company's is rejected;
+- where the document and the SEC data both have a figure, they must agree (within rounding) on at
+  least 90% of at least three such figures, or the document is rejected;
+- a document with too little in common to check is not used, whatever it contains.
+
+A verified document **never replaces** an SEC figure; it only fills figures the SEC data does not
+have, and each of those cites the document, the table or tag, and the printed row. The Sources tab
+shows every document's result and exactly what it added; figures read from a document are marked
+in the statements.
+
+Run against JPMorgan's FY2025 10-K it agreed with the SEC data on 64 of 64 shared figures and
+added average interest-earning assets (FY2023–FY2025), CET1 ratio and risk-weighted assets
+(Standardized, FY2024–FY2025) and tangible common equity (FY2024–FY2025). The net interest income
+driver then runs as declared — average earning assets × margin — instead of the trend stand-in.
+
+**Kept for next time.** An owner's documents live in `companies/<id>/documents/`, versioned with
+the repository. In the hosted app, a visitor's document is kept on the server and, when
+`GITHUB_TOKEN` and `GITHUB_REPOSITORY` are set, proposed to the repository as a pull request once
+it passes verification. Nothing reaches the permanent library without that check and your merge;
+a company a visitor analysed for the first time comes with its config in the same pull request.
 
 ### Publishing
 
@@ -280,7 +325,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/adr/](docs/adr/).
 
 Dashboard: built (see below), read-only over whatever the pipeline has written.
 
-Later: PDF/HTML KPI extraction, ESEF adapter, event studies.
+Later: management guidance read from documents into the assumption registry, ESEF adapter, event studies.
 
 ## Limitations
 
@@ -304,8 +349,13 @@ Later: PDF/HTML KPI extraction, ESEF adapter, event studies.
   scenarios are discrete and analyst-declared.
 - A driver formula cannot reference a prior-period value, so working-capital roll-forwards and balance-sheet
   closing identities (`equity[t] = equity[t-1] + net_income - dividends`) cannot yet be expressed as framework data.
-- Guidance must be transcribed by hand from a registered document, because PDF extraction is not implemented. The
-  document id makes the citation checkable; it does not make the number automatic.
+- Documents are read for the figures a framework names, from tables and tags. Guidance and commentary in prose are
+  not read; guidance must still be transcribed into `assumptions.yaml` by hand, citing the document.
+- Table reading needs a year in the column heading and a stated unit. Quarterly columns ("three months ended") are
+  skipped, so a 10-Q adds balance-sheet figures only at fiscal year end. PDF reading is line-based: a presentation
+  whose figures sit in charts or images yields nothing.
+- A document with fewer than three figures in common with the SEC data cannot be verified and is not used — so a
+  document about a company the SEC does not cover cannot contribute yet.
 - The dashboard is read-only and has no authentication. It cannot run the pipeline, edit assumptions or write
   anything; those are CLI operations, deliberately, so that every change to a company's data is a recorded command.
 - The dashboard renders the charts the engine already produced rather than re-plotting in the browser, so provenance

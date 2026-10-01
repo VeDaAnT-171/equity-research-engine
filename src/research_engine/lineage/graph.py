@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 
 from ..errors import LineageError
 from ..schemas.document import DocumentRecord
@@ -115,7 +116,9 @@ class LineageGraph:
     def from_records(cls, documents: Iterable[DocumentRecord], facts: Iterable[FinancialFact]) -> LineageGraph:
         graph = cls()
         for doc in documents:
-            location = doc.source_url or doc.local_source_path
+            # A local file is named by its file name only: its folder is this machine's business,
+            # and a published lineage trace must not carry it.
+            location = doc.source_url or f"file:{Path(doc.local_source_path or '').name}"
             source_id = f"src:{location}"
             graph.add_node(LineageNode(source_id, NodeKind.SOURCE, location))
             graph.add_node(LineageNode(doc.document_id, NodeKind.DOCUMENT, doc.document_type.value,
@@ -124,6 +127,8 @@ class LineageGraph:
         facts = list(facts)
         for fact in facts:
             attrs = {"value": str(fact.value), "unit": fact.unit, "period": fact.period.label}
+            if fact.formula:
+                attrs["formula"] = fact.formula
             if fact.source is not None:
                 attrs.update({k: str(v) for k, v in fact.source.model_dump(exclude_none=True).items() if k != "document_id"})
             graph.add_node(LineageNode(fact.fact_id, NodeKind.FACT, fact.metric_id, attrs))

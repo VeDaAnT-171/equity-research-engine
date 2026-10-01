@@ -9,7 +9,7 @@ from research_engine.schemas import DocumentType, ValuationFamily
 
 def write(tmp_path, body: str):
     p = tmp_path / "company.yaml"
-    p.write_text(textwrap.dedent(body))
+    p.write_text(textwrap.dedent(body), encoding="utf-8")
     return p
 
 

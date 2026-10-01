@@ -14,9 +14,12 @@ a public address:
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import json
+import re
 import shutil
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -26,9 +29,11 @@ from typing import Any
 from fastapi import Body, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from ..documents.library import INDEX_FILE, LIBRARY_DIR, MAX_BYTES, DocumentLibrary
 from ..errors import ResearchEngineError
 from ..frameworks import FrameworkRegistry
-from .jobs import STAGES, JobRunner, RunRefused
+from .github import GitHubPersister, PersistError
+from .jobs import STAGES, Job, JobRunner, RunRefused
 from .lookup import CompanyIndex, Fetcher, IndexUnavailable
 
 SEARCH_DOWN = "Company search is temporarily unavailable. Please try again shortly."
@@ -46,6 +51,16 @@ def _scrub(value: Any, root_forms: tuple[str, ...]) -> Any:
     return value
 
 
+def _merge_index(source: Path, dest: Path) -> None:
+    if not source.is_file():
+        return
+    theirs = json.loads(source.read_text(encoding="utf-8")).get("documents", [])
+    ours = json.loads(dest.read_text(encoding="utf-8")).get("documents", []) if dest.is_file() else []
+    known = {d.get("id") for d in ours}
+    merged = ours + [d for d in theirs if d.get("id") not in known]
+    dest.write_text(json.dumps({"documents": merged}, indent=2) + "\n", encoding="utf-8")
+
+
 def seed(companies_root: Path, seed_dir: Path | None) -> frozenset[str]:
     """Copy configured companies (the repo's `companies/`) into the data directory once."""
     seeded: set[str] = set()
@@ -56,13 +71,23 @@ def seed(companies_root: Path, seed_dir: Path | None) -> frozenset[str]:
         if not target.is_file():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(config, target)
+        # The company's document library travels with it; documents added here since are kept.
+        library = config.parent / LIBRARY_DIR
+        if library.is_dir():
+            dest = target.parent / LIBRARY_DIR
+            dest.mkdir(exist_ok=True)
+            for item in library.iterdir():
+                if item.is_file() and item.name != INDEX_FILE and not (dest / item.name).exists():
+                    shutil.copyfile(item, dest / item.name)
+            _merge_index(library / INDEX_FILE, dest / INDEX_FILE)
         seeded.add(config.parent.name)
     return frozenset(seeded)
 
 
 def create_hosted_app(data_dir: Path, frameworks_dir: Path, fetcher_factory: Callable[[], Fetcher], *,
                       seed_dir: Path | None = None, runner_options: dict | None = None,
-                      start_seeds: bool = True):
+                      start_seeds: bool = True, persister: GitHubPersister | None = None,
+                      uploads_per_hour: int = 5, max_documents: int = 40):
     from ..api.app import create_app
 
     data_dir = Path(data_dir).resolve()
@@ -98,11 +123,100 @@ def create_hosted_app(data_dir: Path, frameworks_dir: Path, fetcher_factory: Cal
         hops = [h.strip() for h in forwarded.split(",") if h.strip()]
         return hops[-1] if hops else (request.client.host if request.client else "unknown")
 
+    persister = persister if persister is not None else GitHubPersister.from_env()
+    uploads: dict[str, collections.deque[float]] = collections.defaultdict(collections.deque)
+
     @app.get("/api/app", tags=["hosted"])
     def app_info() -> dict:
         return {"hosted": True, "stages": list(STAGES),
                 "coverage": "Companies that file financial statements with the U.S. SEC",
-                "documents": False}
+                "documents": True, "max_document_mb": MAX_BYTES // (1024 * 1024),
+                "documents_saved": persister is not None}
+
+    def _upload_allowed(who: str) -> None:
+        window = uploads[who]
+        now = time.time()
+        while window and now - window[0] > 3600:
+            window.popleft()
+        if len(window) >= uploads_per_hour:
+            raise HTTPException(status_code=429, detail=f"You can add up to {uploads_per_hour} documents an hour.",
+                                headers={"Retry-After": str(int(3600 - (now - window[0])) + 1)})
+        window.append(now)
+
+    def _workspace(company_id: str) -> Path:
+        if not re.fullmatch(r"[a-z0-9]+(?:[_-][a-z0-9]+)*", company_id):
+            raise HTTPException(status_code=404, detail="unknown company")
+        workspace = companies_root / company_id
+        if not (workspace / "output" / "forecast_manifest.json").is_file():
+            raise HTTPException(status_code=409, detail="This company has to finish its first analysis before documents can be added.")
+        return workspace
+
+    def _after(company_id: str, workspace: Path, entry_id: str) -> Callable[[Job], None]:
+        def done(_job: Job) -> None:
+            if persister is None:
+                return
+            report = next((d for d in json.loads((workspace / "output" / "documents.json").read_text(encoding="utf-8")).get("documents", [])
+                           if d.get("entry_id") == entry_id), None)
+            library = DocumentLibrary(workspace)
+            entry = library.get(entry_id)
+            if report is None or report.get("status") != "verified" or entry is None or entry.saved:
+                return
+            try:
+                url = persister.propose(company_id, workspace, entry, summary=report.get("reason", ""))
+            except PersistError as exc:
+                print(f"could not save {entry_id} for {company_id}: {exc}", flush=True)
+                return
+            library.mark_saved(entry_id, url)
+        return done
+
+    def _queue_study(company_id: str, workspace: Path, entry_id: str) -> dict:
+        try:
+            job = runner.resubmit(company_id, reason="New document added", on_done=_after(company_id, workspace, entry_id))
+        except RunRefused as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from None
+        found = runner.get(job.job_id)
+        return job.public(found[1] if found else None)
+
+    @app.put("/api/companies/{company_id}/library", tags=["hosted"], status_code=202,
+             summary="Add a document (the request body is the HTML or PDF file)")
+    async def add_document(company_id: str, request: Request,
+                           kind: str = Query("annual_report", max_length=40),
+                           title: str | None = Query(None, max_length=120),
+                           filename: str = Query("document", max_length=200)) -> JSONResponse:
+        workspace = _workspace(company_id)
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_BYTES:
+            raise HTTPException(status_code=413, detail=f"The file is larger than {MAX_BYTES // (1024 * 1024)} MB.")
+        _upload_allowed(requester(request))
+        content = await request.body()
+        if len(content) > MAX_BYTES:
+            raise HTTPException(status_code=413, detail=f"The file is larger than {MAX_BYTES // (1024 * 1024)} MB.")
+        library = DocumentLibrary(workspace)
+        if len(library.entries()) >= max_documents:
+            raise HTTPException(status_code=409, detail="This company's library is full.")
+        try:
+            entry, new = library.add_file(content, original_name=filename, kind=kind, title=title, added_by="visitor")
+        except ResearchEngineError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        job = _queue_study(company_id, workspace, entry.id) if new else None
+        return JSONResponse({"document": entry.__dict__, "new": new, "run": job}, status_code=202 if new else 200)
+
+    @app.post("/api/companies/{company_id}/library", tags=["hosted"], status_code=202,
+              summary="Add an SEC filing by its EDGAR address")
+    def add_sec_document(company_id: str, request: Request, url: str = Body(embed=True, max_length=300),
+                         kind: str = Body("annual_report", embed=True, max_length=40),
+                         title: str | None = Body(None, embed=True, max_length=120)) -> JSONResponse:
+        workspace = _workspace(company_id)
+        _upload_allowed(requester(request))
+        library = DocumentLibrary(workspace)
+        if len(library.entries()) >= max_documents:
+            raise HTTPException(status_code=409, detail="This company's library is full.")
+        try:
+            entry, new = library.add_sec_filing(url.strip(), kind=kind, title=title, added_by="visitor")
+        except ResearchEngineError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        job = _queue_study(company_id, workspace, entry.id) if new else None
+        return JSONResponse({"document": entry.__dict__, "new": new, "run": job}, status_code=202 if new else 200)
 
     @app.get("/api/search", tags=["hosted"], summary="Find a company in the SEC company index")
     def search(q: str = Query(min_length=1, max_length=80)) -> list[dict]:

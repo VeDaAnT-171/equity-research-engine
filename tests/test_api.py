@@ -30,7 +30,7 @@ def workspace(tmp_path, sec_bank_config_path, frameworks):
     root = tmp_path / "companies"
     company = root / "nyse-exbk"
     company.mkdir(parents=True)
-    (company / "config.yaml").write_text(sec_bank_config_path.read_text(), encoding="utf-8")
+    (company / "config.yaml").write_text(sec_bank_config_path.read_text(encoding="utf-8"), encoding="utf-8")
     config = load_project_config(company / "config.yaml")
     run_ingestion(config, workspace=company, frameworks=frameworks, fetcher=FakeFetcher())
     run_quality_stage(config, workspace=company, frameworks=frameworks)
@@ -50,7 +50,7 @@ def bare(tmp_path, sec_bank_config_path):
     root = tmp_path / "bare"
     company = root / "nyse-exbk"
     company.mkdir(parents=True)
-    (company / "config.yaml").write_text(sec_bank_config_path.read_text(), encoding="utf-8")
+    (company / "config.yaml").write_text(sec_bank_config_path.read_text(encoding="utf-8"), encoding="utf-8")
     return TestClient(create_app(root))
 
 
@@ -128,7 +128,7 @@ def test_assumptions_expose_the_resolution_ladder(client):
 
 
 def test_quality_report_is_served_verbatim(client, workspace):
-    on_disk = json.loads((workspace / "nyse-exbk" / "output" / "data_quality_report.json").read_text())
+    on_disk = json.loads((workspace / "nyse-exbk" / "output" / "data_quality_report.json").read_text(encoding="utf-8"))
     assert client.get("/api/companies/nyse-exbk/quality").json() == on_disk
 
 
@@ -323,9 +323,9 @@ def test_a_skipped_chart_is_not_served_even_if_an_old_image_survives(client, wor
     being projected. The index marked it skipped, and the endpoint served the stale picture anyway.
     """
     out = workspace / "nyse-exbk" / "output" / "forecast_charts"
-    index = json.loads((out / "index.json").read_text())
+    index = json.loads((out / "index.json").read_text(encoding="utf-8"))
     skipped = next(c["chart_id"] for c in index if c.get("skipped"))
-    (out / f"{skipped}.svg").write_text("<svg>stale</svg>")
+    (out / f"{skipped}.svg").write_text("<svg>stale</svg>", encoding="utf-8")
     assert client.get(f"/api/companies/nyse-exbk/forecast/charts/{skipped}.svg").status_code == 404
 
 

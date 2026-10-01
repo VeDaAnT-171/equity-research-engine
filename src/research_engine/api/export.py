@@ -138,6 +138,7 @@ def export_static(companies_root: Path, out: Path) -> dict[str, Any]:
         exporter.json(base)
         exporter.json(f"{base}/documents")
         exporter.json(f"{base}/glossary")
+        exporter.json(f"{base}/library", required=False)
         financials = exporter.json(f"{base}/financials", required=False)
         analytics = exporter.json(f"{base}/analytics")
         exporter.json(f"{base}/quality")

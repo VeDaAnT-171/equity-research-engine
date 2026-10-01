@@ -32,6 +32,7 @@ from ..pipeline import run_ingestion
 from ..pipeline.analysis import run_analysis_stage
 from ..pipeline.forecast import run_forecast_stage
 from ..pipeline.quality import run_quality_stage
+from ..schemas.document import DocumentType
 from .lookup import Fetcher, IndexEntry, write_config
 
 STAGES = ("ingest", "quality", "analyze", "forecast")
@@ -70,6 +71,9 @@ class Job:
     created: float = field(default_factory=time.time)
     started: float | None = None
     finished: float | None = None
+    refresh: bool = True                  # re-download SEC data; a document-only rerun uses the cache
+    reason: str | None = None             # why it runs, when not a first analysis ("New document added")
+    on_done: Callable[[Job], None] | None = field(default=None, repr=False)
 
     def public(self, position: int | None = None) -> dict:
         return {
@@ -77,9 +81,19 @@ class Job:
             "ticker": self.ticker, "state": self.state, "stage": self.stage,
             "stage_label": STAGE_LABEL.get(self.stage or ""),
             "stages": list(STAGES), "stages_done": list(self.stages_done),
-            "error": self.error, "cached": self.cached, "queue_position": position,
+            "error": self.error, "cached": self.cached, "queue_position": position, "reason": self.reason,
             "elapsed_seconds": round((self.finished or time.time()) - (self.started or self.created), 1),
         }
+
+
+def _chain(first: Callable[[Job], None] | None, then: Callable[[Job], None]) -> Callable[[Job], None]:
+    if first is None:
+        return then
+
+    def both(job: Job) -> None:
+        first(job)
+        then(job)
+    return both
 
 
 class JobRunner:
@@ -143,6 +157,33 @@ class JobRunner:
             self._ensure_worker()
             return job
 
+    def resubmit(self, company_id: str, *, reason: str, on_done: Callable[[Job], None] | None = None) -> Job:
+        """Analyse an already configured company again, e.g. because a document was added to it.
+
+        A queued run for the company already includes the new document (the library is read when
+        the run starts), so it is shared. A running one may have read the library already, so a
+        new run is queued behind it.
+        """
+        config = load_project_config(self.root / company_id / "config.yaml")
+        with self._lock:
+            active = self._active.get(company_id)
+            if active and self._jobs[active].state == "queued":
+                job = self._jobs[active]
+                if on_done:
+                    job.on_done = _chain(job.on_done, on_done)
+                return job
+            if len(self._order) >= self.max_queue:
+                raise RunRefused("We're busy preparing other companies. Please try again in a few minutes.",
+                                 retry_after=120)
+            job = Job(uuid.uuid4().hex[:12], company_id, config.company.name, config.company.ticker,
+                      refresh=False, reason=reason, on_done=on_done)
+            self._jobs[job.job_id] = job
+            self._active[company_id] = job.job_id
+            self._order.append(job.job_id)
+            self._queue.put(job.job_id)
+            self._ensure_worker()
+            return job
+
     def get(self, job_id: str) -> tuple[Job, int | None] | None:
         with self._lock:
             job = self._jobs.get(job_id)
@@ -175,6 +216,11 @@ class JobRunner:
             try:
                 self._run(job)
                 job.state = "done"
+                if job.on_done:
+                    try:
+                        job.on_done(job)
+                    except Exception:  # a follow-up (saving to the repository) must not fail the run
+                        traceback.print_exc()
             except Exception as exc:  # the worker must survive any one company's failure
                 job.state = "failed"
                 job.error = self._describe(job, exc)
@@ -183,7 +229,8 @@ class JobRunner:
             finally:
                 job.finished = time.time()
                 with self._lock:
-                    self._active.pop(job.company_id, None)
+                    if self._active.get(job.company_id) == job_id:
+                        self._active.pop(job.company_id, None)
                     if job_id in self._order:
                         self._order.remove(job_id)
                 self._queue.task_done()
@@ -201,11 +248,14 @@ class JobRunner:
 
         job.stage = "ingest"
         result = run_ingestion(config, workspace=workspace, frameworks=self.frameworks,
-                               fetcher=self.fetcher_factory(), refresh=True)
+                               fetcher=self.fetcher_factory(), refresh=job.refresh)
         extracted = result.extraction.facts_emitted if result.extraction else 0
-        if result.failures or not extracted:
-            details = [o.detail or o.record.error or o.action for o in result.failures]
-            if not result.failures or all("404" in d for d in details):
+        # A library document that cannot be read is reported with the document; only the SEC's
+        # structured data is essential to an analysis.
+        failures = [o for o in result.failures if o.record.document_type is DocumentType.STRUCTURED_FILING]
+        if failures or not extracted:
+            details = [o.detail or o.record.error or o.action for o in failures]
+            if not failures or all("404" in d for d in details):
                 # The SEC answers 404 for companyfacts when a filer has never tagged XBRL statements.
                 message = (f"The SEC holds no structured financial statements (XBRL) for {job.name.rstrip('.')}. "
                            "This is common for funds, trusts, shell companies and some foreign issuers.")
@@ -213,7 +263,7 @@ class JobRunner:
                 print(f"download failed for {job.name}: " + "; ".join(details), flush=True)
                 message = (f"We couldn't download the filings for {job.name.rstrip('.')} from the SEC just now. "
                            "Please try again in a few minutes.")
-            if job.company_id not in self.protected:
+            if job.company_id not in self.protected and job.reason is None:
                 shutil.rmtree(workspace, ignore_errors=True)  # nothing to show; keep the list clean
             raise Unavailable(message)
         job.stages_done.append("ingest")

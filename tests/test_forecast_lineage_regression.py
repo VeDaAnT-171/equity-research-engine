@@ -35,7 +35,7 @@ def prepared(sec_bank_config_path, tmp_path, frameworks):
 
 
 def _graph(tmp_path):
-    graph = json.loads((tmp_path / "output" / "lineage.json").read_text())
+    graph = json.loads((tmp_path / "output" / "lineage.json").read_text(encoding="utf-8"))
     parents: dict[str, list[str]] = {}
     for edge in graph["edges"]:
         parents.setdefault(edge["child"], []).append(edge["parent"])

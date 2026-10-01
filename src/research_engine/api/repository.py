@@ -269,6 +269,79 @@ def _names(ws: CompanyWorkspace) -> tuple[dict[str, str], frozenset[str]]:
     return g.get("labels") or {}, frozenset(g.get("document_only") or ())
 
 
+def studied_documents(ws: CompanyWorkspace) -> dict[str, dict[str, Any]]:
+    """document_id -> what the last ingest found in that document (empty before any document)."""
+    path = ws.output / "documents.json"
+    if not path.is_file():
+        return {}
+    try:
+        return {d["document_id"]: d for d in json.loads(path.read_text(encoding="utf-8")).get("documents", [])}
+    except (ValueError, KeyError, TypeError):
+        return {}
+
+
+_STATUS_LABEL = {"verified": "In use", "unverified": "Not used", "rejected": "Rejected", "pending": "Waiting to be analysed"}
+
+
+def library_of(ws: CompanyWorkspace) -> dict[str, Any]:
+    """The company's documents: where each came from, whether it passed its checks, what it added."""
+    from ..documents.library import KIND_LABEL, DocumentLibrary
+    labels = glossary_of(ws).get("labels") or {}
+    reports = list(studied_documents(ws).values())
+    by_entry = {r.get("entry_id"): r for r in reports if r.get("entry_id")}
+    items = []
+
+    def contribution(report: dict[str, Any]) -> list[dict[str, Any]]:
+        return [{"metric_id": m, "label": labels.get(m, m), "periods": sorted(p)}
+                for m, p in sorted((report.get("contributed") or {}).items(), key=lambda kv: labels.get(kv[0], kv[0]))]
+
+    for entry in DocumentLibrary(ws.root).entries():
+        report = by_entry.get(entry.id)
+        status = report["status"] if report else "pending"
+        if status == "verified" and report and not report.get("contributed"):
+            label = "Checked — nothing new"
+        else:
+            label = _STATUS_LABEL.get(status, status)
+        items.append({
+            "id": entry.id, "document_id": report.get("document_id") if report else None,
+            "title": entry.title, "kind": entry.kind, "kind_label": KIND_LABEL.get(entry.kind, entry.kind),
+            "added_by": entry.added_by, "added_at": entry.added_at, "media_type": entry.media_type or (report or {}).get("media_type"),
+            "url": entry.url, "has_file": bool(entry.file), "bytes": entry.bytes,
+            "form": (report or {}).get("form"), "filed": (report or {}).get("filed"),
+            "status": status, "status_label": label,
+            "reason": (report or {}).get("reason") or "It will be read on the next analysis run.",
+            "checked": (report or {}).get("checked", 0), "agreed": (report or {}).get("agreed", 0),
+            "contributed": contribution(report) if report else [],
+        })
+    for report in reports:
+        if report.get("entry_id"):
+            continue
+        items.append({
+            "id": report["document_id"], "document_id": report["document_id"], "title": report["title"],
+            "kind": report["kind"], "kind_label": report.get("kind_label") or report["kind"], "added_by": "config",
+            "added_at": None, "media_type": report.get("media_type"), "url": report.get("url"), "has_file": False,
+            "bytes": None, "form": report.get("form"), "filed": report.get("filed"), "status": report["status"],
+            "status_label": _STATUS_LABEL.get(report["status"], report["status"]), "reason": report["reason"],
+            "checked": report.get("checked", 0), "agreed": report.get("agreed", 0), "contributed": contribution(report),
+        })
+    cik = ws.config.company.identifiers.cik
+    return {
+        "structured_source": {
+            "title": "SEC structured financial data (XBRL)",
+            "url": f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type=10-K" if cik else None,
+        },
+        "documents": items,
+    }
+
+
+def library_file(ws: CompanyWorkspace, entry_id: str) -> tuple[Path, str] | None:
+    from ..documents.library import DocumentLibrary
+    library = DocumentLibrary(ws.root)
+    entry = library.get(entry_id)
+    path = library.path_of(entry) if entry else None
+    return (path, entry.media_type or "") if path else None
+
+
 def financials_of(ws: CompanyWorkspace) -> dict[str, Any]:
     """Full-year figures by statement, as reported (or derived, and marked so) — no new numbers."""
     from ..presentation import STATEMENT_LABEL
@@ -280,6 +353,7 @@ def financials_of(ws: CompanyWorkspace) -> dict[str, Any]:
     rows: dict[str, dict[str, Any]] = {}
     years: set[int] = set()
     currency = None
+    studied = studied_documents(ws)
     for fact in ws.parquet("historical_financials.parquet", "analyze"):
         if fact["fiscal_period"] != "FY":
             continue
@@ -292,6 +366,7 @@ def financials_of(ws: CompanyWorkspace) -> dict[str, Any]:
             "value": fact["value"], "fact_id": fact["fact_id"],
             "derived": fact["provenance"] == "derived",
             "form": fact["filing_form"], "filed": str(fact["filed_date"]) if fact["filed_date"] else None,
+            "document": (studied.get(fact["document_id"]) or {}).get("title"),
         }
     grouped: dict[str, list[dict[str, Any]]] = {}
     for metric, row in sorted(rows.items(), key=lambda kv: (order.get(kv[0], 10_000), kv[0])):

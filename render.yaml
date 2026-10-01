@@ -1,7 +1,8 @@
 # Render blueprint for the hosted app: type a company, the engine analyses it on demand.
 #
 # Deploy: Render dashboard -> New -> Blueprint -> pick this repository. Render will ask for
-# SEC_USER_AGENT (your name and contact e-mail; the SEC requires one on every request).
+# SEC_USER_AGENT (your name and contact e-mail; the SEC requires one on every request), and
+# optionally GITHUB_TOKEN and GITHUB_REPOSITORY (owner/name) to keep visitors' documents.
 #
 # The free plan has no persistent disk and sleeps after 15 minutes idle. On wake the data
 # directory is empty, so the showcase company is re-analysed at start-up (the page shows its
@@ -20,4 +21,11 @@ services:
       - key: PYTHON_VERSION
         value: "3.12.7"
       - key: SEC_USER_AGENT
+        sync: false
+      # Optional: save documents visitors add (once they pass their checks) as pull requests to
+      # this repository. A fine-grained token limited to this one repository, with "Contents" and
+      # "Pull requests" read/write. Leave both unset and added documents last until a restart.
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPOSITORY
         sync: false

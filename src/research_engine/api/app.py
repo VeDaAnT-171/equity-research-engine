@@ -8,6 +8,7 @@ local analyst tooling: there is no authentication, and it should not be exposed 
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -120,6 +121,27 @@ def create_app(companies_root: Path):
     @app.get("/api/companies/{company_id}/quality", tags=["analysis"], response_model=m.Quality)
     def quality(company_id: str):
         return guarded(repo.quality_of, company(company_id))
+
+    @app.get("/api/companies/{company_id}/library", tags=["companies"], response_model=m.Library,
+             summary="The company's documents, what each passed and what each added")
+    def library(company_id: str):
+        return guarded(repo.library_of, company(company_id))
+
+    @app.get("/api/companies/{company_id}/library/{entry_id}/file", tags=["companies"],
+             summary="An uploaded document, as a download")
+    def library_file(company_id: str, entry_id: str):
+        from fastapi.responses import FileResponse
+        if not re.fullmatch(r"[0-9a-f]{16}", entry_id):
+            raise HTTPException(status_code=404, detail="no such document")
+        found = repo.library_file(company(company_id), entry_id)
+        if found is None:
+            raise HTTPException(status_code=404, detail="no such document")
+        path, media = found
+        # Uploaded HTML is never rendered on this origin: it is offered as a download, and the
+        # sandbox header stops a PDF viewer from running anything the file carries.
+        return FileResponse(path, media_type="application/pdf" if media == "pdf" else "application/octet-stream",
+                            filename=path.name, content_disposition_type="inline" if media == "pdf" else "attachment",
+                            headers={"Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"})
 
     @app.get("/api/companies/{company_id}/checks", tags=["analysis"], response_model=m.Checks,
              summary="Data checks and their findings, in plain language")
