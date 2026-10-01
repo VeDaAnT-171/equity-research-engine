@@ -15,6 +15,12 @@ week from the latest SEC filings (JPMorgan Chase, FY2007 onward): the whole pipe
 clean machine and republishes only if the tests and the data-quality gate pass. Every figure opens
 its lineage back to the filing it came from; the page shows which run it was built from.
 
+**[Search any company →](https://equity-research-engine-d7fs.onrender.com/)** The hosted app:
+type a company name or ticker and it is analysed from its SEC filings on demand; add an annual
+report or presentation in its Sources tab and it is checked and used. Free hosting: after 15
+minutes idle the first visit takes about a minute to wake, and documents added there last until
+the next restart.
+
 ```
 SEC XBRL  →  canonical facts  →  quality checks  →  analytics  →  forecast  →  dashboard
              (every one cites      (missing is        (model        (assumptions   (every figure
@@ -201,6 +207,8 @@ The server has **no authentication** and binds to localhost. It is local analyst
 expose it.
 
 ### Hosted app: analyse any SEC filer on demand
+
+Live at **https://equity-research-engine-d7fs.onrender.com/**. To run your own:
 
 ```bash
 SEC_USER_AGENT="Your Name you@example.com" research-engine app --data app-data
